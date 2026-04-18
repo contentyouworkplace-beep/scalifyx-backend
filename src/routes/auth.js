@@ -1,0 +1,101 @@
+const express = require('express');
+const router = express.Router();
+const { supabaseAdmin } = require('../lib/supabase');
+
+// POST /api/auth/signup — Create user account
+router.post('/signup', async (req, res) => {
+  const { email, password, name } = req.body;
+
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email and password required' });
+  }
+
+  if (password.length < 6) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  }
+
+  try {
+    const { data, error } = await supabaseAdmin.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+      user_metadata: { name: name || '' },
+    });
+
+    if (error) throw error;
+
+    // Update profile with name
+    if (name) {
+      await supabaseAdmin
+        .from('profiles')
+        .update({ name, email })
+        .eq('id', data.user.id);
+    }
+
+    res.json({ success: true, userId: data.user.id });
+  } catch (error) {
+    console.error('Signup error:', error);
+    res.status(400).json({ error: error.message || 'Signup failed' });
+  }
+});
+
+// POST /api/auth/login — Sign in and return profile
+router.post('/login', async (req, res) => {
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email and password required' });
+  }
+
+  try {
+    // Verify credentials via Supabase
+    const { data, error } = await supabaseAdmin.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) throw error;
+
+    // Fetch profile
+    const { data: profile } = await supabaseAdmin
+      .from('profiles')
+      .select('*')
+      .eq('id', data.user.id)
+      .single();
+
+    res.json({
+      success: true,
+      token: data.session.access_token,
+      user: profile,
+    });
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(400).json({ error: 'Invalid email or password' });
+  }
+});
+
+// GET /api/auth/me — Get current user profile
+router.get('/me', async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
+
+  try {
+    const token = authHeader.split(' ')[1];
+    const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
+    if (error || !user) throw new Error('Invalid token');
+
+    const { data: profile } = await supabaseAdmin
+      .from('profiles')
+      .select('*')
+      .eq('id', user.id)
+      .single();
+
+    res.json({ success: true, user: profile });
+  } catch (error) {
+    res.status(401).json({ error: 'Invalid or expired token' });
+  }
+});
+
+module.exports = router;
