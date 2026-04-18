@@ -43,12 +43,14 @@ app.use('/api/payment', paymentRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/admin', adminRoutes);
 
-// WebSocket for real-time chat
-setupChatSocket(io);
+// WebSocket for real-time chat (skip on Vercel serverless)
+if (!process.env.VERCEL) {
+  setupChatSocket(io);
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`🚀 ScalifyX API running on port ${PORT}`);
-});
+  const PORT = process.env.PORT || 3000;
+  server.listen(PORT, () => {
+    console.log(`🚀 ScalifyX API running on port ${PORT}`);
+  });
+}
 
 module.exports = app;
