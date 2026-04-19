@@ -6,31 +6,178 @@ const { deploySite } = require('../services/siteDeployer');
 const { supabaseAdmin } = require('../lib/supabase');
 const { authMiddleware } = require('../middleware/auth');
 const { sendPushNotification } = require('../lib/pushNotifications');
+const { searchKnowledgeBase, getStarterFAQs } = require('../data/knowledgeBase');
 
-// POST /api/chat/sales — Sales assistant for free users (no auth required)
+// ─── Local FAQ chatbot for free users (NO Claude API) ───
+
+function buildLocalReply(userMessage) {
+  const msg = userMessage.toLowerCase().trim();
+
+  // Greeting patterns
+  if (/^(hi|hello|hey|hii+|namaste|hola|good\s*(morning|evening|afternoon)|what'?s?\s*up)/i.test(msg)) {
+    return {
+      reply: "Hey there! 👋 Welcome to ScalifyX!\n\nI'm here to help you get a **professional website + SEO** for your business — starting at just **₹749/month**.\n\nHere are some things you can ask me:",
+      showCTA: false,
+      suggestions: ['How much does it cost?', 'What do I get in the plan?', 'How does it work?', 'Will my website rank on Google?'],
+    };
+  }
+
+  // Pricing intent
+  if (/price|cost|kitna|charge|rate|plan|afford|budget|pay|rupee|₹|money|expensive|cheap/i.test(msg)) {
+    const results = searchKnowledgeBase(userMessage, 3);
+    const answer = results.length > 0
+      ? results[0].a
+      : "ScalifyX Pro is just **₹749/month** (63% OFF from ₹1,999). You get a professional website + full SEO — that's less than ₹25/day!";
+    return {
+      reply: answer,
+      showCTA: true,
+      suggestions: ['What\'s included in ₹749?', 'Is there a free trial?', 'Can I cancel anytime?', 'How does billing work?'],
+    };
+  }
+
+  // How it works
+  if (/how\s*(does|do)\s*it\s*work|how\s*to\s*(start|begin|use)|process|step/i.test(msg)) {
+    return {
+      reply: "It's super simple! 🚀\n\n1️⃣ **Subscribe** to ScalifyX Pro (₹749/month)\n2️⃣ **Chat with our AI** — answer a few questions about your business\n3️⃣ **Get your website** live in minutes!\n4️⃣ We handle **SEO, hosting, SSL** — everything!\n\nYou can update your website anytime just by chatting. No coding needed!",
+      showCTA: true,
+      suggestions: ['How much does it cost?', 'What kind of website will I get?', 'Can I see an example?', 'How long does it take?'],
+    };
+  }
+
+  // Feature / what do I get
+  if (/feature|what\s*(do\s*i|will\s*i|can\s*i)\s*get|include|website\s*have|what'?s?\s*included/i.test(msg)) {
+    return {
+      reply: "Here's everything you get with ScalifyX Pro (**₹749/month**):\n\n✅ Professional multi-page website\n✅ Mobile responsive design\n✅ Free hosting + SSL certificate\n✅ On-page & technical SEO\n✅ Google Search Console setup\n✅ WhatsApp chat button\n✅ Contact forms\n✅ Social media integration\n✅ Unlimited website updates\n✅ Priority support\n\nAll included — no hidden charges!",
+      showCTA: true,
+      suggestions: ['Will my website work on mobile?', 'Can I add photos?', 'Can I use my own domain?', 'How do I update my website?'],
+    };
+  }
+
+  // SEO related
+  if (/seo|google|rank|search\s*engine|organic|traffic|keyword|search\s*console/i.test(msg)) {
+    const results = searchKnowledgeBase(userMessage, 3);
+    const answer = results.length > 0
+      ? results[0].a
+      : "SEO (Search Engine Optimization) helps your website appear on Google when customers search for your business. We handle on-page SEO, technical SEO, Google Search Console setup, and keyword optimization — all included in your plan!";
+    return {
+      reply: answer,
+      showCTA: true,
+      suggestions: ['How long does SEO take?', 'Will I rank #1 on Google?', 'What is on-page SEO?', 'Do you submit to Google?'],
+    };
+  }
+
+  // Domain related
+  if (/domain|url|link|address|\.com|\.in|subdomain/i.test(msg)) {
+    const results = searchKnowledgeBase(userMessage, 2);
+    return {
+      reply: results.length > 0 ? results[0].a : "You get a free subdomain (yourbusiness.scalifyx.in). Want your own domain like yourbusiness.com? You can connect it — domain registration is separate (₹500-800/year from any registrar).",
+      showCTA: false,
+      suggestions: ['Is hosting included?', 'Is SSL included?', 'How do I connect my domain?', 'What\'s included in the plan?'],
+    };
+  }
+
+  // Trust / scam / legit
+  if (/scam|fake|legit|trust|real|safe|fraud|secure/i.test(msg)) {
+    return {
+      reply: "Great question! ScalifyX is 100% legitimate 🛡️\n\n• We use **Razorpay** (India's most trusted payment gateway)\n• GST invoices provided for every payment\n• Your payment info is never stored on our servers\n• Cancel anytime — no lock-in contracts\n• 7-day satisfaction guarantee\n\nThousands of businesses trust us. Your data and payments are completely secure!",
+      showCTA: false,
+      suggestions: ['Can I cancel anytime?', 'Do I get an invoice?', 'How does payment work?', 'What if I\'m not satisfied?'],
+    };
+  }
+
+  // Comparison
+  if (/wix|wordpress|squarespace|godaddy|vs|compare|better|alternative|differ/i.test(msg)) {
+    const results = searchKnowledgeBase(userMessage, 3);
+    const answer = results.length > 0
+      ? results[0].a
+      : "Unlike DIY builders like Wix (₹250-700/month, no SEO), ScalifyX gives you a **professionally built website + full SEO for ₹749/month**. No technical skills needed — just chat and your site is ready!";
+    return {
+      reply: answer,
+      showCTA: true,
+      suggestions: ['How much do I save?', 'Is it better than hiring a developer?', 'What makes ScalifyX different?'],
+    };
+  }
+
+  // Business type questions
+  if (/restaurant|salon|doctor|clinic|shop|gym|coaching|school|lawyer|ca\b|bakery|photographer|hotel|travel|event/i.test(msg)) {
+    const results = searchKnowledgeBase(userMessage, 3);
+    if (results.length > 0) {
+      return {
+        reply: results[0].a + "\n\nReady to get started? Subscribe and our AI will build your website in minutes! 🚀",
+        showCTA: true,
+        suggestions: ['How much does it cost?', 'How long does it take?', 'Can I see an example?', 'What do I need to provide?'],
+      };
+    }
+  }
+
+  // Subscribe / get started
+  if (/subscribe|start|signup|sign\s*up|begin|ready|let'?s?\s*go|buy|purchase/i.test(msg)) {
+    return {
+      reply: "Awesome! Let's get you started! 🎉\n\nTap the **Plans** tab below to subscribe to ScalifyX Pro at just **₹749/month**. After payment, our AI will guide you step-by-step to create your website!\n\nIt takes less than 5 minutes to go live.",
+      showCTA: true,
+      suggestions: ['What payment methods do you accept?', 'Is there a free trial?', 'Can I cancel anytime?'],
+    };
+  }
+
+  // Thank you / bye
+  if (/thank|thanks|bye|okay|ok\b|cool|great|nice|perfect|awesome/i.test(msg)) {
+    return {
+      reply: "You're welcome! 😊 Feel free to ask me anything anytime.\n\nWhen you're ready to build your website, just subscribe and our AI takes care of everything!",
+      showCTA: false,
+      suggestions: ['How much does it cost?', 'How does it work?', 'View Plans'],
+    };
+  }
+
+  // Fallback — search knowledge base
+  const results = searchKnowledgeBase(userMessage, 3);
+  if (results.length > 0 && results[0].score >= 3) {
+    return {
+      reply: results[0].a,
+      showCTA: results[0].score > 5,
+      suggestions: ['How much does it cost?', 'What\'s included?', 'How does it work?', 'Will I rank on Google?'],
+    };
+  }
+
+  // Generic fallback
+  return {
+    reply: "Thanks for your question! 😊\n\nI can help you with:\n• **Pricing** — Plans starting at ₹749/month\n• **Features** — What's included in your website\n• **SEO** — How we help you rank on Google\n• **Getting started** — How the process works\n\nAsk me anything, or tap a suggestion below!",
+    showCTA: false,
+    suggestions: ['How much does it cost?', 'What do I get?', 'How does it work?', 'Will people find me on Google?'],
+  };
+}
+
+// POST /api/chat/sales — FAQ chatbot for free users (NO Claude API)
 router.post('/sales', async (req, res) => {
-  const { message, userId, history } = req.body;
+  const { message } = req.body;
 
   if (!message) {
     return res.status(400).json({ error: 'message required' });
   }
 
   try {
-    // Build conversation history from request or empty
-    const conversationHistory = Array.isArray(history) ? history.slice(-10) : [];
-
-    const result = await processSalesChat(conversationHistory, message);
-
+    const result = buildLocalReply(message);
     res.json({
       reply: result.reply,
       showCTA: result.showCTA,
+      suggestions: result.suggestions || [],
     });
   } catch (error) {
     console.error('Sales chat error:', error);
-    res.status(500).json({
-      reply: "I'd love to help! 😊\n\nScalifyX gives you a professional website + full SEO for just **₹749/month** — that's less than ₹25/day!\n\nTap 'View Plans' to get started, or ask me any specific question!",
+    res.json({
+      reply: "I'd love to help! 😊\n\nScalifyX gives you a professional website + full SEO for just **₹749/month** — that's less than ₹25/day!\n\nAsk me about pricing, features, or how it works!",
       showCTA: true,
+      suggestions: ['How much does it cost?', 'What\'s included?', 'How does it work?'],
     });
+  }
+});
+
+// GET /api/chat/starter-faqs — Get FAQs for empty chat state
+router.get('/starter-faqs', async (req, res) => {
+  try {
+    const faqs = getStarterFAQs();
+    res.json({ faqs });
+  } catch (error) {
+    res.json({ faqs: [] });
   }
 });
 
