@@ -10,7 +10,7 @@ const supabase = createClient(
 
 const ADMIN_EMAIL = 'scalifyxpro@gmail.com';
 const ADMIN_PASSWORD = 'Vardaan@RM5678';
-const ADMIN_NAME = 'ScalifyX Admin';
+const ADMIN_NAME = 'Scalify Admin';
 
 async function seedAdmin() {
   console.log('Creating admin user...');

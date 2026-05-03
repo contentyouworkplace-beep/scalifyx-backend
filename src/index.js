@@ -10,6 +10,8 @@ const websiteRoutes = require('./routes/website');
 const paymentRoutes = require('./routes/payment');
 const userRoutes = require('./routes/user');
 const adminRoutes = require('./routes/admin');
+const notificationRoutes = require('./routes/notifications');
+const contactRoutes = require('./routes/contact');
 const { setupChatSocket } = require('./services/chatSocket');
 
 const app = express();
@@ -32,7 +34,7 @@ app.use(express.json({
 
 // Health check
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', service: 'ScalifyX API', version: '1.0.0' });
+  res.json({ status: 'ok', service: 'Scalify API', version: '1.0.0' });
 });
 
 // Routes
@@ -42,6 +44,8 @@ app.use('/api/website', websiteRoutes);
 app.use('/api/payment', paymentRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/contact', contactRoutes);
 
 // WebSocket for real-time chat (skip on Vercel serverless)
 if (!process.env.VERCEL) {
@@ -50,7 +54,7 @@ if (!process.env.VERCEL) {
   const PORT = process.env.PORT || 3000;
   const HOST = process.env.HOST || '0.0.0.0';
   server.listen(PORT, HOST, () => {
-    console.log(`🚀 ScalifyX API running on ${HOST}:${PORT}`);
+    console.log(`🚀 Scalify API running on ${HOST}:${PORT}`);
   });
 }
 

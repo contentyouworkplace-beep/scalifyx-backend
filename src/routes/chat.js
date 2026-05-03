@@ -7,6 +7,11 @@ const { supabaseAdmin } = require('../lib/supabase');
 const { authMiddleware } = require('../middleware/auth');
 const { sendPushNotification } = require('../lib/pushNotifications');
 const { searchKnowledgeBase, getStarterFAQs } = require('../data/knowledgeBase');
+const adminRoutes = require('./admin');
+
+async function isAiEnabled() {
+  try { return await adminRoutes.getAiChatEnabled(); } catch { return true; }
+}
 
 // ─── Local FAQ chatbot for free users (NO Claude API) ───
 
@@ -16,7 +21,7 @@ function buildLocalReply(userMessage) {
   // Greeting patterns
   if (/^(hi|hello|hey|hii+|namaste|hola|good\s*(morning|evening|afternoon)|what'?s?\s*up)/i.test(msg)) {
     return {
-      reply: "Hey there! 👋 Welcome to ScalifyX!\n\nI'm here to help you get a **professional website + SEO** for your business — starting at just **₹749/month**.\n\nHere are some things you can ask me:",
+      reply: "Hey there! 👋 Welcome to Scalify!\n\nI'm here to help you get a **professional website + SEO** for your business — starting at just **₹1,499/month**.\n\nHere are some things you can ask me:",
       showCTA: false,
       suggestions: ['How much does it cost?', 'What do I get in the plan?', 'How does it work?', 'Will my website rank on Google?'],
     };
@@ -27,18 +32,18 @@ function buildLocalReply(userMessage) {
     const results = searchKnowledgeBase(userMessage, 3);
     const answer = results.length > 0
       ? results[0].a
-      : "ScalifyX Pro is just **₹749/month** (63% OFF from ₹1,999). You get a professional website + full SEO — that's less than ₹25/day!";
+      : "Scalify Pro is just **₹1,499/month** (63% OFF from ₹2,499). You get a professional website + full SEO — that's less than ₹25/day!";
     return {
       reply: answer,
       showCTA: true,
-      suggestions: ['What\'s included in ₹749?', 'Is there a free trial?', 'Can I cancel anytime?', 'How does billing work?'],
+      suggestions: ['What\'s included in ₹1,499?', 'Is there a free trial?', 'Can I cancel anytime?', 'How does billing work?'],
     };
   }
 
   // How it works
   if (/how\s*(does|do)\s*it\s*work|how\s*to\s*(start|begin|use)|process|step/i.test(msg)) {
     return {
-      reply: "It's super simple! 🚀\n\n1️⃣ **Subscribe** to ScalifyX Pro (₹749/month)\n2️⃣ **Chat with our AI** — answer a few questions about your business\n3️⃣ **Get your website** live in minutes!\n4️⃣ We handle **SEO, hosting, SSL** — everything!\n\nYou can update your website anytime just by chatting. No coding needed!",
+      reply: "It's super simple! 🚀\n\n1️⃣ **Subscribe** to Scalify Pro (₹1,499/month)\n2️⃣ **Chat with our AI** — answer a few questions about your business\n3️⃣ **Get your website** live in minutes!\n4️⃣ We handle **SEO, hosting, SSL** — everything!\n\nYou can update your website anytime just by chatting. No coding needed!",
       showCTA: true,
       suggestions: ['How much does it cost?', 'What kind of website will I get?', 'Can I see an example?', 'How long does it take?'],
     };
@@ -47,7 +52,7 @@ function buildLocalReply(userMessage) {
   // Feature / what do I get
   if (/feature|what\s*(do\s*i|will\s*i|can\s*i)\s*get|include|website\s*have|what'?s?\s*included/i.test(msg)) {
     return {
-      reply: "Here's everything you get with ScalifyX Pro (**₹749/month**):\n\n✅ Professional multi-page website\n✅ Mobile responsive design\n✅ Free hosting + SSL certificate\n✅ On-page & technical SEO\n✅ Google Search Console setup\n✅ WhatsApp chat button\n✅ Contact forms\n✅ Social media integration\n✅ Unlimited website updates\n✅ Priority support\n\nAll included — no hidden charges!",
+      reply: "Here's everything you get with Scalify Pro (**₹1,499/month**):\n\n✅ Professional multi-page website\n✅ Mobile responsive design\n✅ Free hosting + SSL certificate\n✅ On-page & technical SEO\n✅ Google Search Console setup\n✅ WhatsApp chat button\n✅ Contact forms\n✅ Social media integration\n✅ Unlimited website updates\n✅ Priority support\n\nAll included — no hidden charges!",
       showCTA: true,
       suggestions: ['Will my website work on mobile?', 'Can I add photos?', 'Can I use my own domain?', 'How do I update my website?'],
     };
@@ -70,7 +75,7 @@ function buildLocalReply(userMessage) {
   if (/domain|url|link|address|\.com|\.in|subdomain/i.test(msg)) {
     const results = searchKnowledgeBase(userMessage, 2);
     return {
-      reply: results.length > 0 ? results[0].a : "You get a free subdomain (yourbusiness.scalifyx.in). Want your own domain like yourbusiness.com? You can connect it — domain registration is separate (₹500-800/year from any registrar).",
+      reply: results.length > 0 ? results[0].a : "You get a free subdomain (yourbusiness.scalifyapp.com). Want your own domain like yourbusiness.com? You can connect it — domain registration is separate (₹500-800/year from any registrar).",
       showCTA: false,
       suggestions: ['Is hosting included?', 'Is SSL included?', 'How do I connect my domain?', 'What\'s included in the plan?'],
     };
@@ -79,7 +84,7 @@ function buildLocalReply(userMessage) {
   // Trust / scam / legit
   if (/scam|fake|legit|trust|real|safe|fraud|secure/i.test(msg)) {
     return {
-      reply: "Great question! ScalifyX is 100% legitimate 🛡️\n\n• We use **Razorpay** (India's most trusted payment gateway)\n• GST invoices provided for every payment\n• Your payment info is never stored on our servers\n• Cancel anytime — no lock-in contracts\n• 7-day satisfaction guarantee\n\nThousands of businesses trust us. Your data and payments are completely secure!",
+      reply: "Great question! Scalify is 100% legitimate 🛡️\n\n• We use **Razorpay** (India's most trusted payment gateway)\n• GST invoices provided for every payment\n• Your payment info is never stored on our servers\n• Cancel anytime — no lock-in contracts\n• 7-day satisfaction guarantee\n\nThousands of businesses trust us. Your data and payments are completely secure!",
       showCTA: false,
       suggestions: ['Can I cancel anytime?', 'Do I get an invoice?', 'How does payment work?', 'What if I\'m not satisfied?'],
     };
@@ -90,11 +95,11 @@ function buildLocalReply(userMessage) {
     const results = searchKnowledgeBase(userMessage, 3);
     const answer = results.length > 0
       ? results[0].a
-      : "Unlike DIY builders like Wix (₹250-700/month, no SEO), ScalifyX gives you a **professionally built website + full SEO for ₹749/month**. No technical skills needed — just chat and your site is ready!";
+      : "Unlike DIY builders like Wix (₹250-700/month, no SEO), Scalify gives you a **professionally built website + full SEO for ₹1,499/month**. No technical skills needed — just chat and your site is ready!";
     return {
       reply: answer,
       showCTA: true,
-      suggestions: ['How much do I save?', 'Is it better than hiring a developer?', 'What makes ScalifyX different?'],
+      suggestions: ['How much do I save?', 'Is it better than hiring a developer?', 'What makes Scalify different?'],
     };
   }
 
@@ -113,7 +118,7 @@ function buildLocalReply(userMessage) {
   // Subscribe / get started
   if (/subscribe|start|signup|sign\s*up|begin|ready|let'?s?\s*go|buy|purchase/i.test(msg)) {
     return {
-      reply: "Awesome! Let's get you started! 🎉\n\nTap the **Plans** tab below to subscribe to ScalifyX Pro at just **₹749/month**. After payment, our AI will guide you step-by-step to create your website!\n\nIt takes less than 5 minutes to go live.",
+      reply: "Awesome! Let's get you started! 🎉\n\nTap the **Plans** tab below to subscribe to Scalify Pro at just **₹1,499/month**. After payment, our AI will guide you step-by-step to create your website!\n\nIt takes less than 5 minutes to go live.",
       showCTA: true,
       suggestions: ['What payment methods do you accept?', 'Is there a free trial?', 'Can I cancel anytime?'],
     };
@@ -140,7 +145,7 @@ function buildLocalReply(userMessage) {
 
   // Generic fallback
   return {
-    reply: "Thanks for your question! 😊\n\nI can help you with:\n• **Pricing** — Plans starting at ₹749/month\n• **Features** — What's included in your website\n• **SEO** — How we help you rank on Google\n• **Getting started** — How the process works\n\nAsk me anything, or tap a suggestion below!",
+    reply: "Thanks for your question! 😊\n\nI can help you with:\n• **Pricing** — Plans starting at ₹1,499/month\n• **Features** — What's included in your website\n• **SEO** — How we help you rank on Google\n• **Getting started** — How the process works\n\nAsk me anything, or tap a suggestion below!",
     showCTA: false,
     suggestions: ['How much does it cost?', 'What do I get?', 'How does it work?', 'Will people find me on Google?'],
   };
@@ -164,7 +169,7 @@ router.post('/sales', async (req, res) => {
   } catch (error) {
     console.error('Sales chat error:', error);
     res.json({
-      reply: "I'd love to help! 😊\n\nScalifyX gives you a professional website + full SEO for just **₹749/month** — that's less than ₹25/day!\n\nAsk me about pricing, features, or how it works!",
+      reply: "I'd love to help! 😊\n\nScalify gives you a professional website + full SEO for just **₹1,499/month** — that's less than ₹25/day!\n\nAsk me about pricing, features, or how it works!",
       showCTA: true,
       suggestions: ['How much does it cost?', 'What\'s included?', 'How does it work?'],
     });
@@ -210,6 +215,21 @@ router.post('/message', authMiddleware, async (req, res) => {
       content: message,
     });
 
+    // Check if AI is globally enabled
+    const aiEnabled = await isAiEnabled();
+    if (!aiEnabled) {
+      // AI disabled — save user message and return a human-agent message
+      const humanMsg = '🧑‍💼 Our team has received your message and will reply shortly. AI responses are temporarily paused.';
+      await supabaseAdmin.from('messages').insert({
+        conversation_id: convId,
+        sender_type: 'ai',
+        content: humanMsg,
+      });
+      // Convert conversation to support type so admin sees it
+      await supabaseAdmin.from('conversations').update({ type: 'support' }).eq('id', convId);
+      return res.json({ reply: humanMsg, action: null, conversationId: convId, ai_disabled: true });
+    }
+
     // Fetch conversation history from DB
     const { data: msgHistory } = await supabaseAdmin
       .from('messages')
@@ -235,7 +255,7 @@ router.post('/message', authMiddleware, async (req, res) => {
 
     // Send push notification for the AI reply
     const replyPreview = (result.reply || '').slice(0, 100);
-    sendPushNotification(userId, 'ScalifyX AI', replyPreview, { type: 'chat', conversationId: convId }).catch(() => {});
+    sendPushNotification(userId, 'Scalify AI', replyPreview, { type: 'chat', conversationId: convId }).catch(() => {});
 
     res.json({
       reply: result.reply,
@@ -430,7 +450,7 @@ router.post('/admin/reply', authMiddleware, async (req, res) => {
     // Send push notification to user
     sendPushNotification(
       conv.user_id,
-      'ScalifyX Support',
+      'Scalify Support',
       message.slice(0, 100),
       { type: 'chat', conversationId }
     ).catch(() => {});

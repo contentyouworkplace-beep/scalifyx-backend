@@ -2,6 +2,47 @@ const express = require('express');
 const router = express.Router();
 const { supabaseAdmin } = require('../lib/supabase');
 const { authMiddleware, adminMiddleware } = require('../middleware/auth');
+const { sendPushNotification } = require('../lib/pushNotifications');
+const { sendWebPushBroadcast } = require('../lib/webPush');
+
+// ─── In-memory cache for AI setting (loaded from DB on first request) ───
+let _aiChatEnabled = null; // null = not loaded yet
+
+async function getAiChatEnabled() {
+  if (_aiChatEnabled !== null) return _aiChatEnabled;
+  const { data } = await supabaseAdmin.from('app_settings').select('value').eq('key', 'ai_chat_enabled').single();
+  _aiChatEnabled = data?.value === true || data?.value === 'true';
+  return _aiChatEnabled;
+}
+
+// Exported so chat routes can check it
+router.getAiChatEnabled = getAiChatEnabled;
+
+// GET /api/admin/ai-settings
+router.get('/ai-settings', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const enabled = await getAiChatEnabled();
+    res.json({ ai_chat_enabled: enabled });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch AI settings' });
+  }
+});
+
+// PUT /api/admin/ai-settings
+router.put('/ai-settings', authMiddleware, adminMiddleware, async (req, res) => {
+  const { ai_chat_enabled } = req.body;
+  if (typeof ai_chat_enabled !== 'boolean') {
+    return res.status(400).json({ error: 'ai_chat_enabled must be boolean' });
+  }
+  try {
+    await supabaseAdmin.from('app_settings').upsert({ key: 'ai_chat_enabled', value: ai_chat_enabled, updated_at: new Date().toISOString() });
+    _aiChatEnabled = ai_chat_enabled; // update cache
+    res.json({ success: true, ai_chat_enabled });
+  } catch (error) {
+    console.error('Update AI settings error:', error);
+    res.status(500).json({ error: 'Failed to update AI settings' });
+  }
+});
 
 // GET /api/admin/notifications — Get all notifications
 router.get('/notifications', authMiddleware, adminMiddleware, async (req, res) => {
@@ -55,6 +96,21 @@ router.post('/notifications', authMiddleware, adminMiddleware, async (req, res) 
       .single();
 
     if (error) throw error;
+
+    // Send web push broadcast (non-blocking)
+    if (status !== 'draft') {
+      sendWebPushBroadcast(title, body, target || 'all').catch(() => {});
+
+      // Also send Expo push to users who have mobile tokens
+      const planFilter = target === 'pro' ? { plan: 'pro' } : target === 'free' ? { plan: 'free' } : {};
+      let profileQuery = supabaseAdmin.from('profiles').select('id, push_token').not('push_token', 'is', null);
+      if (planFilter.plan) profileQuery = profileQuery.eq('plan', planFilter.plan);
+      const { data: profiles } = await profileQuery;
+      (profiles || []).forEach((p) => {
+        if (p.push_token) sendPushNotification(p.id, title, body).catch(() => {});
+      });
+    }
+
     res.json({ success: true, notification: data });
   } catch (error) {
     console.error('Create notification error:', error);
@@ -242,6 +298,80 @@ router.delete('/offers/:id', authMiddleware, adminMiddleware, async (req, res) =
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: 'Failed to delete offer' });
+  }
+});
+
+// ============================================
+// USER OFFERS — custom per-user offers
+// ============================================
+
+// GET /api/admin/user-offers/:userId — list all custom offers for a user
+router.get('/user-offers/:userId', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('user_offers')
+      .select('*')
+      .eq('user_id', req.params.userId)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    res.json({ offers: data });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch user offers' });
+  }
+});
+
+// POST /api/admin/user-offers — create custom offer for a user
+router.post('/user-offers', authMiddleware, adminMiddleware, async (req, res) => {
+  const { user_id, name, description, plan_type, price, original_price, trial_days, features, expires_at } = req.body;
+  if (!user_id || !name) return res.status(400).json({ error: 'user_id and name are required' });
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('user_offers')
+      .insert({
+        user_id,
+        created_by: req.user.id,
+        name,
+        description: description || '',
+        plan_type: plan_type || 'pro',
+        price: price || 0,
+        original_price: original_price || 0,
+        trial_days: trial_days || 0,
+        features: features || [],
+        is_active: true,
+        expires_at: expires_at || null,
+      })
+      .select()
+      .single();
+    if (error) throw error;
+    res.json({ success: true, offer: data });
+  } catch (error) {
+    console.error('Create user offer error:', error);
+    res.status(500).json({ error: 'Failed to create user offer' });
+  }
+});
+
+// PUT /api/admin/user-offers/:id — update (e.g. deactivate)
+router.put('/user-offers/:id', authMiddleware, adminMiddleware, async (req, res) => {
+  const allowed = ['name', 'description', 'plan_type', 'price', 'original_price', 'trial_days', 'features', 'is_active', 'expires_at'];
+  const updates = {};
+  allowed.forEach((k) => { if (req.body[k] !== undefined) updates[k] = req.body[k]; });
+  try {
+    const { data, error } = await supabaseAdmin.from('user_offers').update(updates).eq('id', req.params.id).select().single();
+    if (error) throw error;
+    res.json({ success: true, offer: data });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update user offer' });
+  }
+});
+
+// DELETE /api/admin/user-offers/:id — delete custom offer
+router.delete('/user-offers/:id', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { error } = await supabaseAdmin.from('user_offers').delete().eq('id', req.params.id);
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to delete user offer' });
   }
 });
 

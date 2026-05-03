@@ -831,7 +831,7 @@ export default function FAQ() {
         </div>
         <div className="flex flex-col sm:flex-row items-center justify-between pt-8 gap-4">
           <p className="text-gray-500 text-xs">&copy; ${new Date().getFullYear()} ${esc(businessName)}. All rights reserved.</p>
-          <p className="text-gray-600 text-xs flex items-center gap-1">Made with <span className="text-red-500">❤️</span> by <a href="https://scalifyx.in" className="hover:text-gray-400 transition font-medium">ScalifyX</a></p>
+          <p className="text-gray-600 text-xs flex items-center gap-1">Made with <span className="text-red-500">❤️</span> by <a href="https://scalifyapp.com" className="hover:text-gray-400 transition font-medium">Scalify</a></p>
         </div>
       </div>
     </footer>

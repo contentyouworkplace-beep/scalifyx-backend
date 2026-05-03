@@ -4,7 +4,7 @@ const { supabaseAdmin } = require('../lib/supabase');
 
 // POST /api/auth/signup — Create user account
 router.post('/signup', async (req, res) => {
-  const { email, password, name } = req.body;
+  const { email, password, name, phone } = req.body;
 
   if (!email || !password) {
     return res.status(400).json({ error: 'Email and password required' });
@@ -24,11 +24,14 @@ router.post('/signup', async (req, res) => {
 
     if (error) throw error;
 
-    // Update profile with name
-    if (name) {
+    // Update profile with name and phone
+    const updates = { email };
+    if (name) updates.name = name;
+    if (phone) updates.phone = phone;
+    if (name || phone) {
       await supabaseAdmin
         .from('profiles')
-        .update({ name, email })
+        .update(updates)
         .eq('id', data.user.id);
     }
 

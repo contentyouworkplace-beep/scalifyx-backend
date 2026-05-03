@@ -11,7 +11,7 @@ const razorpay = new Razorpay({
   key_secret: process.env.RAZORPAY_KEY_SECRET || 'demo_secret',
 });
 
-const PLAN_PRICE = 749; // ₹749/month
+const PLAN_PRICE = 1499; // ₹1,499/month
 const PLAN_PRICE_PAISE = PLAN_PRICE * 100;
 
 // ─────────────────────────────────────────────
@@ -31,7 +31,7 @@ router.post('/create-payment-link', authMiddleware, async (req, res) => {
 
     // Get active offer price (dynamic from admin)
     let amount = PLAN_PRICE_PAISE;
-    let planName = 'ScalifyX Pro';
+    let planName = 'Scalify Pro';
     const { data: offer } = await supabaseAdmin
       .from('offers')
       .select('price, name')
@@ -420,8 +420,9 @@ router.get('/admin/subscriptions', authMiddleware, adminMiddleware, async (req, 
 
 // === PUBLIC ROUTES ===
 
-// GET /api/payment/offers — Get active offers (public for PlansScreen)
+// GET /api/payment/offers — Get active offers + user-specific offers
 router.get('/offers', authMiddleware, async (req, res) => {
+  const userId = req.user.id;
   try {
     let { data, error } = await supabaseAdmin
       .from('offers')
@@ -434,11 +435,11 @@ router.get('/offers', authMiddleware, async (req, res) => {
     // Auto-seed default offer if none exist
     if (!data || data.length === 0) {
       const defaultOffer = {
-        name: 'ScalifyX Pro',
+        name: 'Scalify Pro',
         description: 'Everything you need to grow your business online',
         plan_type: 'pro',
-        price: 749,
-        original_price: 1999,
+        price: 1499,
+        original_price: 2499,
         trial_days: 0,
         features: [
           'Website + Search Engine Optimization',
@@ -470,7 +471,23 @@ router.get('/offers', authMiddleware, async (req, res) => {
       }
     }
 
-    res.json({ offers: data || [] });
+    // Fetch user-specific custom offers (not expired)
+    const now = new Date().toISOString();
+    const { data: userOffers } = await supabaseAdmin
+      .from('user_offers')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('is_active', true)
+      .or(`expires_at.is.null,expires_at.gt.${now}`)
+      .order('created_at', { ascending: false });
+
+    // Merge: user offers shown first with a flag
+    const merged = [
+      ...(userOffers || []).map((o) => ({ ...o, is_user_offer: true })),
+      ...(data || []),
+    ];
+
+    res.json({ offers: merged });
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch offers' });
   }

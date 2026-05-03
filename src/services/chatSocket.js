@@ -2,6 +2,11 @@ const { processChat } = require('./aiAgent');
 const { generateWebsite } = require('./websiteGenerator');
 const { supabaseAdmin } = require('../lib/supabase');
 const { sendPushNotification } = require('../lib/pushNotifications');
+const adminRoutes = require('../routes/admin');
+
+async function isAiEnabled() {
+  try { return await adminRoutes.getAiChatEnabled(); } catch { return true; }
+}
 
 /**
  * Setup Socket.io real-time chat for AI website builder
@@ -51,6 +56,18 @@ function setupChatSocket(io) {
           content: m.content,
         }));
 
+        // Check if AI is globally enabled
+        const aiEnabled = await isAiEnabled();
+        if (!aiEnabled) {
+          const humanMsg = '🧑‍💼 Our team has received your message and will reply shortly. AI responses are temporarily paused.';
+          if (conversationId) {
+            await supabaseAdmin.from('messages').insert({ conversation_id: conversationId, sender_type: 'ai', content: humanMsg });
+            await supabaseAdmin.from('conversations').update({ type: 'support' }).eq('id', conversationId);
+          }
+          socket.emit('message', { text: humanMsg, sender: 'bot', type: 'text', ai_disabled: true });
+          return;
+        }
+
         // Process through AI agent
         const result = await processChat(history, message);
 
@@ -66,7 +83,7 @@ function setupChatSocket(io) {
         // Send push notification if user is not actively connected
         if (userId) {
           const replyPreview = (result.reply || '').slice(0, 100);
-          sendPushNotification(userId, 'ScalifyX AI', replyPreview, { type: 'chat', conversationId }).catch(() => {});
+          sendPushNotification(userId, 'Scalify AI', replyPreview, { type: 'chat', conversationId }).catch(() => {});
         }
 
         // If AI wants to generate a website

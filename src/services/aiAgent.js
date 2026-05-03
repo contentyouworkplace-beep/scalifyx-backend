@@ -5,7 +5,7 @@ const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-const SYSTEM_PROMPT = `You are ScalifyX AI — a friendly, professional website creation assistant for Indian small businesses.
+const SYSTEM_PROMPT = `You are Scalify AI — a friendly, professional website creation assistant for Indian small businesses.
 
 YOUR JOB: Collect business details through natural conversation, then generate a website.
 
@@ -33,7 +33,7 @@ RULES:
 - Speak in simple English (many users may not be fluent).
 - After collecting ALL info, confirm the summary and say you're generating the website.
 - Be encouraging and positive about their business.
-- If they ask about pricing, mention plans starting at ₹199/month.
+- If they ask about pricing, mention plans starting at ₹1,499/month.
 
 WHEN ALL DATA IS COLLECTED, respond with a JSON block in this exact format:
 \`\`\`json
@@ -336,11 +336,11 @@ FINAL CHECK BEFORE RESPONDING:
 
 // ─── SALES ASSISTANT for free users ───
 
-const SALES_SYSTEM_PROMPT = `You are ScalifyX AI — a warm, persuasive sales assistant for ScalifyX, an affordable Website + SEO subscription service for Indian small businesses.
+const SALES_SYSTEM_PROMPT = `You are Scalify AI — a warm, persuasive sales assistant for Scalify, an affordable Website + SEO subscription service for Indian small businesses.
 
-YOUR GOAL: Answer user questions honestly, build trust, and convince them to subscribe to ScalifyX Pro (₹749/month).
+YOUR GOAL: Answer user questions honestly, build trust, and convince them to subscribe to Scalify Pro (₹1,499/month).
 
-ABOUT SCALIFYX PRO (₹749/month — 63% OFF from ₹1,999):
+ABOUT SCALIFYX PRO (₹1,499/month — 63% OFF from ₹2,499):
 - Professional multi-page website (unlimited pages)
 - Full SEO optimization (on-page, technical, local)
 - Free hosting, SSL, maintenance
@@ -379,7 +379,7 @@ IMPORTANT RULES:
 RESPONSE FORMAT:
 - Keep answers focused and actionable
 - Use bullet points for lists
-- Bold (**text**) for key numbers like ₹749
+- Bold (**text**) for key numbers like ₹1,499
 - End with a soft CTA when appropriate (not every message)
 
 At the end of your response, on a new line, add exactly one of these tags:
@@ -396,7 +396,7 @@ async function processSalesChat(conversationHistory, userMessage) {
   const kbResults = searchKnowledgeBase(userMessage, 5);
   const knowledgeContext = kbResults.length > 0
     ? kbResults.map(r => `Q: ${r.q}\nA: ${r.a}`).join('\n\n')
-    : 'No specific FAQ match — use your general knowledge about ScalifyX.';
+    : 'No specific FAQ match — use your general knowledge about Scalify.';
 
   const systemPrompt = SALES_SYSTEM_PROMPT.replace('{KNOWLEDGE_CONTEXT}', knowledgeContext);
 
