@@ -62,7 +62,7 @@ router.post('/create-payment-link', authMiddleware, async (req, res) => {
         userId,
         plan: 'pro',
       },
-      callback_url: '', // Razorpay will show success page
+      callback_url: `${process.env.FRONTEND_URL || 'https://scalifyapp.com'}/dashboard/plans?payment=success`,
       callback_method: 'get',
     });
 
@@ -338,7 +338,7 @@ router.post('/webhook', async (req, res) => {
           currentEnd.setDate(currentEnd.getDate() + 30);
           await supabaseAdmin
             .from('subscriptions')
-            .update({ end_date: currentEnd.toISOString(), amount: (paymentData?.amount || 74900) / 100, updated_at: now.toISOString() })
+            .update({ end_date: currentEnd.toISOString(), amount: (paymentData?.amount || 149900) / 100, updated_at: now.toISOString() })
             .eq('id', existingSub.id);
         } else {
           await supabaseAdmin
@@ -346,7 +346,7 @@ router.post('/webhook', async (req, res) => {
             .insert({
               user_id: userId,
               plan: 'pro',
-              amount: (paymentData?.amount || 74900) / 100,
+              amount: (paymentData?.amount || 149900) / 100,
               status: 'active',
               start_date: now.toISOString(),
               end_date: endDate.toISOString(),
