@@ -1,15 +1,16 @@
 const express = require('express');
 const crypto = require('crypto');
-const Razorpay = require('razorpay');
 const router = express.Router();
 const { supabaseAdmin } = require('../lib/supabase');
 const { authMiddleware, adminMiddleware } = require('../middleware/auth');
 
-// Initialize Razorpay
-const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID || 'rzp_test_demo_key',
-  key_secret: process.env.RAZORPAY_KEY_SECRET || 'demo_secret',
-});
+function getRazorpay() {
+  if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) return null;
+  try {
+    const Razorpay = require('razorpay');
+    return new Razorpay({ key_id: process.env.RAZORPAY_KEY_ID, key_secret: process.env.RAZORPAY_KEY_SECRET });
+  } catch (e) { return null; }
+}
 
 const PLAN_PRICE = 1499; // ₹1,499/month
 const PLAN_PRICE_PAISE = PLAN_PRICE * 100;
@@ -39,24 +40,30 @@ router.post('/create-payment-link', authMiddleware, async (req, res) => {
       .eq('is_active', true)
       .order('sort_order', { ascending: true })
       .limit(1)
-      .single();
+      .maybeSingle();
 
     if (offer) {
-      amount = offer.price * 100; // convert to paise
+      amount = offer.price * 100;
       planName = offer.name;
     }
+
+    const razorpay = getRazorpay();
+    if (!razorpay) {
+      return res.status(500).json({ error: 'Payment service not configured' });
+    }
+
+    // Only include customer fields that are non-empty
+    const customer = {};
+    if (profile?.name) customer.name = profile.name;
+    if (profile?.phone) customer.contact = profile.phone;
 
     // Create Razorpay Payment Link
     const paymentLink = await razorpay.paymentLink.create({
       amount,
       currency: 'INR',
       description: `${planName} — Monthly`,
-      customer: {
-        name: profile?.name || '',
-        email: profile?.email || '',
-        contact: profile?.phone || '',
-      },
-      notify: { sms: true, email: true },
+      ...(Object.keys(customer).length > 0 ? { customer } : {}),
+      notify: { sms: !!profile?.phone, email: false },
       reminder_enable: true,
       notes: {
         userId,
