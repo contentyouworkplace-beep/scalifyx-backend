@@ -40,14 +40,12 @@ router.post('/create-payment-link', authMiddleware, async (req, res) => {
       .maybeSingle();
     if (offer?.price) amount = offer.price * 100;
 
-    const frontendUrl = (process.env.FRONTEND_URL || 'https://scalifyapp.com').replace(/\/$/, '');
-
     const paymentLink = await razorpay.paymentLink.create({
       amount,
       currency: 'INR',
       description: 'Scalify Pro - Monthly',
       notes: { userId, plan: 'pro' },
-      callback_url: `${frontendUrl}/dashboard/plans?payment=success`,
+      callback_url: 'https://scalifyapp.com/dashboard/plans?payment=success',
       callback_method: 'get',
     });
 
