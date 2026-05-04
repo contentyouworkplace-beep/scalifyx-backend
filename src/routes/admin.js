@@ -47,7 +47,7 @@ let _aiChatEnabled = null; // null = not loaded yet
 async function getAiChatEnabled() {
   if (_aiChatEnabled !== null) return _aiChatEnabled;
   const { data } = await supabaseAdmin.from('app_settings').select('value').eq('key', 'ai_chat_enabled').maybeSingle();
-  _aiChatEnabled = data?.value === true || data?.value === 'true';
+  _aiChatEnabled = data === null ? true : (data?.value === true || data?.value === 'true');
   return _aiChatEnabled;
 }
 

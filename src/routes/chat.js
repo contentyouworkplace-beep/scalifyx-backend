@@ -241,7 +241,6 @@ router.post('/website', authMiddleware, async (req, res) => {
     // Save user message
     await supabaseAdmin.from('messages').insert({
       conversation_id: convId,
-      sender_id: userId,
       sender_type: 'user',
       content: message,
     });
@@ -347,8 +346,9 @@ router.post('/website', authMiddleware, async (req, res) => {
 
     res.json({ reply: replyWithUrl, action: actionResult, conversationId: convId });
   } catch (err) {
-    console.error('Website builder error:', err);
-    res.status(500).json({ error: 'Failed to process message' });
+    const detail = err?.message || String(err);
+    console.error('Website builder error:', detail);
+    res.status(500).json({ error: detail || 'Failed to process message' });
   }
 });
 
@@ -411,7 +411,6 @@ router.post('/message', authMiddleware, async (req, res) => {
     // Save user message
     await supabaseAdmin.from('messages').insert({
       conversation_id: convId,
-      sender_id: userId,
       sender_type: 'user',
       content: message,
     });
@@ -633,7 +632,6 @@ router.post('/admin/reply', authMiddleware, async (req, res) => {
       .from('messages')
       .insert({
         conversation_id: conversationId,
-        sender_id: adminId,
         sender_type: 'admin',
         content: message,
       })
@@ -750,7 +748,6 @@ router.post('/admin/website-ai', authMiddleware, async (req, res) => {
     // Save admin message
     await supabaseAdmin.from('messages').insert({
       conversation_id: convId,
-      sender_id: adminId,
       sender_type: 'admin',
       content: message,
     });
