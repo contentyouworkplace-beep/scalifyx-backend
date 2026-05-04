@@ -80,6 +80,22 @@ router.put('/ai-settings', authMiddleware, adminMiddleware, async (req, res) => 
   }
 });
 
+// POST /api/admin/ai-settings (alias for PUT)
+router.post('/ai-settings', authMiddleware, adminMiddleware, async (req, res) => {
+  const { ai_chat_enabled } = req.body;
+  if (typeof ai_chat_enabled !== 'boolean') {
+    return res.status(400).json({ error: 'ai_chat_enabled must be boolean' });
+  }
+  try {
+    await supabaseAdmin.from('app_settings').upsert({ key: 'ai_chat_enabled', value: ai_chat_enabled, updated_at: new Date().toISOString() });
+    _aiChatEnabled = ai_chat_enabled; // update cache
+    res.json({ success: true, ai_chat_enabled });
+  } catch (error) {
+    console.error('Update AI settings error:', error);
+    res.status(500).json({ error: 'Failed to update AI settings' });
+  }
+});
+
 // GET /api/admin/notifications — Get all notifications
 router.get('/notifications', authMiddleware, adminMiddleware, async (req, res) => {
   try {
