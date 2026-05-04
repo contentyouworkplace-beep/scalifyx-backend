@@ -243,11 +243,15 @@ router.post('/website', authMiddleware, async (req, res) => {
     const { convId } = await getOrCreateWebsiteConversation(userId);
 
     // Save user message
-    await supabaseAdmin.from('messages').insert({
+    const { error: userMsgError } = await supabaseAdmin.from('messages').insert({
       conversation_id: convId,
       sender_type: 'user',
       content: message,
     }).select();
+    if (userMsgError) {
+      console.error('Error saving user message:', userMsgError);
+      throw new Error(`Failed to save user message: ${userMsgError.message}`);
+    }
 
     // Human support mode — skip Claude, notify admin
     if (mode === 'human') {
@@ -349,11 +353,14 @@ router.post('/website', authMiddleware, async (req, res) => {
     const aiReply = result.fullReply || result.reply;
     const replyWithUrl = aiReply + (actionResult?.url ? `\n\n🌐 Your website is live: **${actionResult.url}**` : '');
 
-    await supabaseAdmin.from('messages').insert({
+    const { error: aiMsgError } = await supabaseAdmin.from('messages').insert({
       conversation_id: convId,
       sender_type: 'ai',
       content: replyWithUrl,
     }).select();
+    if (aiMsgError) {
+      console.error('Error saving AI message:', aiMsgError);
+    }
 
     await supabaseAdmin.from('conversations').update({ updated_at: new Date().toISOString() }).eq('id', convId);
 
