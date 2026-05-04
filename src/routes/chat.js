@@ -168,7 +168,7 @@ async function getOrCreateWebsiteConversation(userId) {
     .from('conversations')
     .select('id')
     .eq('user_id', userId)
-    .eq('type', 'website_builder')
+    .eq('type', 'ai')
     .order('created_at', { ascending: true })
     .limit(1)
     .maybeSingle();
@@ -177,7 +177,7 @@ async function getOrCreateWebsiteConversation(userId) {
 
   const { data: conv, error: convError } = await supabaseAdmin
     .from('conversations')
-    .insert({ user_id: userId, type: 'website_builder', status: 'active' })
+    .insert({ user_id: userId, type: 'ai', status: 'active' })
     .select('id')
     .maybeSingle();
 
@@ -740,12 +740,12 @@ router.post('/admin/website-ai', authMiddleware, async (req, res) => {
     // Get or create admin-website conversation (type: 'admin_website', hidden from user)
     let convId = conversationId;
     if (!convId) {
-      // Check for existing admin_website conversation for this user
+      // Check for existing admin conversation for this user
       const { data: existing } = await supabaseAdmin
         .from('conversations')
         .select('id')
         .eq('user_id', userId)
-        .eq('type', 'admin_website')
+        .eq('type', 'ai')
         .eq('status', 'active')
         .maybeSingle();
 
@@ -754,7 +754,7 @@ router.post('/admin/website-ai', authMiddleware, async (req, res) => {
       } else {
         const { data: conv, error: convError } = await supabaseAdmin
           .from('conversations')
-          .insert({ user_id: userId, type: 'admin_website', status: 'active' })
+          .insert({ user_id: userId, type: 'ai', status: 'active' })
           .select('id')
           .maybeSingle();
         if (convError || !conv) {
@@ -900,12 +900,12 @@ router.get('/admin/website-ai/:userId', authMiddleware, async (req, res) => {
       .maybeSingle();
     if (profile?.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
 
-    // Find admin_website conversation for this user
+    // Find admin conversation for this user
     const { data: conv } = await supabaseAdmin
       .from('conversations')
       .select('id')
       .eq('user_id', req.params.userId)
-      .eq('type', 'admin_website')
+      .eq('type', 'ai')
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
