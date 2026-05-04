@@ -175,11 +175,15 @@ async function getOrCreateWebsiteConversation(userId) {
 
   if (existing) return { convId: existing.id, isNew: false };
 
-  const { data: conv } = await supabaseAdmin
+  const { data: conv, error: convError } = await supabaseAdmin
     .from('conversations')
     .insert({ user_id: userId, type: 'website_builder', status: 'active' })
     .select('id')
     .maybeSingle();
+
+  if (convError || !conv) {
+    throw new Error(convError?.message || 'Failed to create conversation');
+  }
 
   // Save greeting as first AI message
   await supabaseAdmin.from('messages').insert({
@@ -243,12 +247,12 @@ router.post('/website', authMiddleware, async (req, res) => {
       conversation_id: convId,
       sender_type: 'user',
       content: message,
-    });
+    }).select();
 
     // Human support mode — skip Claude, notify admin
     if (mode === 'human') {
       const msg = '✅ Message received! Our support team will get back to you within a few hours.';
-      await supabaseAdmin.from('messages').insert({ conversation_id: convId, sender_type: 'ai', content: msg });
+      await supabaseAdmin.from('messages').insert({ conversation_id: convId, sender_type: 'ai', content: msg }).select();
       // Mark conversation as needing human attention
       await supabaseAdmin.from('conversations').update({ status: 'needs_human', updated_at: new Date().toISOString() }).eq('id', convId);
       return res.json({ reply: msg, senderType: 'ai', action: null, conversationId: convId });
@@ -349,7 +353,7 @@ router.post('/website', authMiddleware, async (req, res) => {
       conversation_id: convId,
       sender_type: 'ai',
       content: replyWithUrl,
-    });
+    }).select();
 
     await supabaseAdmin.from('conversations').update({ updated_at: new Date().toISOString() }).eq('id', convId);
 
@@ -409,11 +413,14 @@ router.post('/message', authMiddleware, async (req, res) => {
     // Get or create conversation
     let convId = conversationId;
     if (!convId) {
-      const { data: conv } = await supabaseAdmin
+      const { data: conv, error: convError } = await supabaseAdmin
         .from('conversations')
         .insert({ user_id: userId, type: 'ai' })
         .select('id')
         .maybeSingle();
+      if (convError || !conv) {
+        throw new Error(convError?.message || 'Failed to create conversation');
+      }
       convId = conv.id;
     }
 
@@ -745,11 +752,14 @@ router.post('/admin/website-ai', authMiddleware, async (req, res) => {
       if (existing) {
         convId = existing.id;
       } else {
-        const { data: conv } = await supabaseAdmin
+        const { data: conv, error: convError } = await supabaseAdmin
           .from('conversations')
           .insert({ user_id: userId, type: 'admin_website', status: 'active' })
           .select('id')
           .maybeSingle();
+        if (convError || !conv) {
+          throw new Error(convError?.message || 'Failed to create admin conversation');
+        }
         convId = conv.id;
       }
     }
