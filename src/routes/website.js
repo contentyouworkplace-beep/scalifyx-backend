@@ -50,7 +50,7 @@ router.post('/generate', authMiddleware, async (req, res) => {
         vercel_url: deployResult?.vercelUrl || null,
       })
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) throw error;
 
@@ -123,7 +123,7 @@ router.get('/:siteId', async (req, res) => {
       .from('websites')
       .select('*')
       .eq('site_id', req.params.siteId)
-      .single();
+      .maybeSingle();
 
     if (error || !data) {
       return res.status(404).json({ error: 'Website not found' });
@@ -154,7 +154,7 @@ router.put('/:siteId', authMiddleware, async (req, res) => {
       .update(updates)
       .eq('site_id', req.params.siteId)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) throw error;
     res.json({ success: true, website: data });
@@ -173,7 +173,7 @@ router.post('/:siteId/track', async (req, res) => {
       .from('websites')
       .select('id')
       .eq('site_id', req.params.siteId)
-      .single();
+      .maybeSingle();
 
     if (website) {
       await supabaseAdmin.from('analytics').insert({

@@ -10,7 +10,7 @@ router.get('/:userId', authMiddleware, async (req, res) => {
       .from('profiles')
       .select('*')
       .eq('id', req.params.userId)
-      .single();
+      .maybeSingle();
 
     if (error) throw error;
     res.json(data);
@@ -41,7 +41,7 @@ router.put('/:userId', authMiddleware, async (req, res) => {
       .update(updates)
       .eq('id', req.params.userId)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) throw error;
     res.json({ success: true, user: data });
@@ -61,7 +61,7 @@ router.get('/:userId/analytics', authMiddleware, async (req, res) => {
       .eq('user_id', req.params.userId)
       .eq('status', 'live')
       .limit(1)
-      .single();
+      .maybeSingle();
 
     if (!website) {
       return res.json({ visitors: 0, pageViews: 0, leads: 0, uptime: 99.9, topPages: [] });
@@ -115,7 +115,7 @@ router.post('/referral/apply', authMiddleware, async (req, res) => {
       .from('profiles')
       .select('id, credits')
       .eq('referral_code', referralCode.toUpperCase())
-      .single();
+      .maybeSingle();
 
     if (findErr || !referrer) {
       return res.status(400).json({ error: 'Invalid referral code' });
@@ -274,7 +274,7 @@ router.put('/admin/:userId/update', authMiddleware, adminMiddleware, async (req,
       .update(updates)
       .eq('id', userId)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) throw error;
     res.json({ success: true, user: data });

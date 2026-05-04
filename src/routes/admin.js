@@ -46,7 +46,7 @@ let _aiChatEnabled = null; // null = not loaded yet
 
 async function getAiChatEnabled() {
   if (_aiChatEnabled !== null) return _aiChatEnabled;
-  const { data } = await supabaseAdmin.from('app_settings').select('value').eq('key', 'ai_chat_enabled').single();
+  const { data } = await supabaseAdmin.from('app_settings').select('value').eq('key', 'ai_chat_enabled').maybeSingle();
   _aiChatEnabled = data?.value === true || data?.value === 'true';
   return _aiChatEnabled;
 }
@@ -129,7 +129,7 @@ router.post('/notifications', authMiddleware, adminMiddleware, async (req, res) 
         recipients_count: recipientsCount,
       })
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) throw error;
 
@@ -173,7 +173,7 @@ router.put('/notifications/:id', authMiddleware, adminMiddleware, async (req, re
       .update(updates)
       .eq('id', req.params.id)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) throw error;
     res.json({ success: true, notification: data });
@@ -282,7 +282,7 @@ router.post('/offers', authMiddleware, adminMiddleware, async (req, res) => {
         sort_order: sort_order || 0,
       })
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) throw error;
 
@@ -321,7 +321,7 @@ router.put('/offers/:id', authMiddleware, adminMiddleware, async (req, res) => {
 
     // Regenerate Razorpay payment link if price changed and it's a paid plan
     if (price !== undefined && (plan_type || 'pro') !== 'trial' && price > 0) {
-      const { data: existing } = await supabaseAdmin.from('offers').select('name, plan_type').eq('id', req.params.id).single();
+      const { data: existing } = await supabaseAdmin.from('offers').select('name, plan_type').eq('id', req.params.id).maybeSingle();
       const offerName = name || existing?.name || 'Scalify Pro';
       const offerPlanType = plan_type || existing?.plan_type || 'pro';
       if (offerPlanType !== 'trial') {
@@ -335,7 +335,7 @@ router.put('/offers/:id', authMiddleware, adminMiddleware, async (req, res) => {
       .update(updates)
       .eq('id', req.params.id)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) throw error;
     res.json({ success: true, offer: data });
@@ -399,7 +399,7 @@ router.post('/user-offers', authMiddleware, adminMiddleware, async (req, res) =>
         expires_at: expires_at || null,
       })
       .select()
-      .single();
+      .maybeSingle();
     if (error) throw error;
     res.json({ success: true, offer: data });
   } catch (error) {

@@ -64,7 +64,7 @@ router.post('/login', async (req, res) => {
       .from('profiles')
       .select('*')
       .eq('id', data.user.id)
-      .single();
+      .maybeSingle();
 
     res.json({
       success: true,
@@ -93,7 +93,7 @@ router.get('/me', async (req, res) => {
       .from('profiles')
       .select('*')
       .eq('id', user.id)
-      .single();
+      .maybeSingle();
 
     res.json({ success: true, user: profile });
   } catch (error) {

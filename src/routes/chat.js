@@ -179,7 +179,7 @@ async function getOrCreateWebsiteConversation(userId) {
     .from('conversations')
     .insert({ user_id: userId, type: 'website_builder', status: 'active' })
     .select('id')
-    .single();
+    .maybeSingle();
 
   // Save greeting as first AI message
   await supabaseAdmin.from('messages').insert({
@@ -230,7 +230,7 @@ router.post('/website', authMiddleware, async (req, res) => {
       .from('profiles')
       .select('plan')
       .eq('id', userId)
-      .single();
+      .maybeSingle();
 
     if (!profile || profile.plan !== 'pro') {
       return res.status(403).json({ error: 'Upgrade to Scalify Pro to use the AI website builder.' });
@@ -307,7 +307,7 @@ router.post('/website', authMiddleware, async (req, res) => {
           deployed_url: deployResult?.url || website.url,
           vercel_project_id: deployResult?.projectId || null,
           vercel_url: deployResult?.vercelUrl || null,
-        }).select().single();
+        }).select().maybeSingle();
 
         await supabaseAdmin.from('profiles').update({
           business_name: result.action.data.businessName,
@@ -404,7 +404,7 @@ router.post('/message', authMiddleware, async (req, res) => {
         .from('conversations')
         .insert({ user_id: userId, type: 'ai' })
         .select('id')
-        .single();
+        .maybeSingle();
       convId = conv.id;
     }
 
@@ -480,7 +480,7 @@ router.post('/notify-admin', authMiddleware, async (req, res) => {
       .from('profiles')
       .select('name, phone, email')
       .eq('id', userId)
-      .single();
+      .maybeSingle();
 
     const userName = userProfile?.name || userProfile?.phone || 'A user';
     const preview = (message || '').substring(0, 100);
@@ -554,7 +554,7 @@ router.get('/admin/conversations', authMiddleware, async (req, res) => {
       .from('profiles')
       .select('role')
       .eq('id', req.user.id)
-      .single();
+      .maybeSingle();
     if (profile?.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
 
     const { data, error } = await supabaseAdmin
@@ -609,7 +609,7 @@ router.post('/admin/reply', authMiddleware, async (req, res) => {
       .from('profiles')
       .select('role, name')
       .eq('id', adminId)
-      .single();
+      .maybeSingle();
     if (profile?.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
 
     // Get conversation to find user
@@ -617,7 +617,7 @@ router.post('/admin/reply', authMiddleware, async (req, res) => {
       .from('conversations')
       .select('user_id, type')
       .eq('id', conversationId)
-      .single();
+      .maybeSingle();
     if (!conv) return res.status(404).json({ error: 'Conversation not found' });
 
     // If conversation was AI type, switch to support when admin replies
@@ -638,7 +638,7 @@ router.post('/admin/reply', authMiddleware, async (req, res) => {
         content: message,
       })
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) throw error;
 
@@ -670,7 +670,7 @@ router.put('/admin/resolve/:conversationId', authMiddleware, async (req, res) =>
       .from('profiles')
       .select('role')
       .eq('id', req.user.id)
-      .single();
+      .maybeSingle();
     if (profile?.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
 
     const { error } = await supabaseAdmin
@@ -720,7 +720,7 @@ router.post('/admin/website-ai', authMiddleware, async (req, res) => {
       .from('profiles')
       .select('role')
       .eq('id', adminId)
-      .single();
+      .maybeSingle();
     if (profile?.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
 
     // Get or create admin-website conversation (type: 'admin_website', hidden from user)
@@ -733,7 +733,7 @@ router.post('/admin/website-ai', authMiddleware, async (req, res) => {
         .eq('user_id', userId)
         .eq('type', 'admin_website')
         .eq('status', 'active')
-        .single();
+        .maybeSingle();
 
       if (existing) {
         convId = existing.id;
@@ -742,7 +742,7 @@ router.post('/admin/website-ai', authMiddleware, async (req, res) => {
           .from('conversations')
           .insert({ user_id: userId, type: 'admin_website', status: 'active' })
           .select('id')
-          .single();
+          .maybeSingle();
         convId = conv.id;
       }
     }
@@ -775,7 +775,7 @@ router.post('/admin/website-ai', authMiddleware, async (req, res) => {
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
 
     // Add context about existing website if available
     let contextMessage = message;
@@ -881,7 +881,7 @@ router.get('/admin/website-ai/:userId', authMiddleware, async (req, res) => {
       .from('profiles')
       .select('role')
       .eq('id', req.user.id)
-      .single();
+      .maybeSingle();
     if (profile?.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
 
     // Find admin_website conversation for this user
@@ -892,7 +892,7 @@ router.get('/admin/website-ai/:userId', authMiddleware, async (req, res) => {
       .eq('type', 'admin_website')
       .order('created_at', { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
 
     if (!conv) {
       return res.json({ messages: [], conversationId: null });

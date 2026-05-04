@@ -26,9 +26,9 @@ router.post('/create-payment-link', authMiddleware, async (req, res) => {
     // Fetch user profile for prefill
     const { data: profile } = await supabaseAdmin
       .from('profiles')
-      .select('name, email, phone')
+      .select('name, phone')
       .eq('id', userId)
-      .single();
+      .maybeSingle();
 
     // Get active offer price (dynamic from admin)
     let amount = PLAN_PRICE_PAISE;
@@ -91,7 +91,7 @@ router.post('/create-payment-link', authMiddleware, async (req, res) => {
     });
   } catch (error) {
     console.error('Create payment link error:', error);
-    res.status(500).json({ error: 'Failed to create payment link' });
+    res.status(500).json({ error: 'Failed to create payment link', detail: error?.message || String(error) });
   }
 });
 
@@ -110,7 +110,7 @@ router.get('/status', authMiddleware, async (req, res) => {
       .eq('user_id', userId)
       .order('end_date', { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
 
     const now = new Date();
     let status = 'free'; // free | active | expired | trial
@@ -134,7 +134,7 @@ router.get('/status', authMiddleware, async (req, res) => {
       .from('profiles')
       .select('plan, phone, name, email')
       .eq('id', userId)
-      .single();
+      .maybeSingle();
 
     // Get recent payments
     const { data: payments } = await supabaseAdmin
@@ -240,7 +240,7 @@ router.post('/webhook', async (req, res) => {
           .gt('end_date', now.toISOString())
           .order('end_date', { ascending: false })
           .limit(1)
-          .single();
+          .maybeSingle();
 
         if (existingSub) {
           // Extend existing subscription by 30 days from current end date
@@ -338,7 +338,7 @@ router.post('/webhook', async (req, res) => {
           .eq('status', 'active')
           .gt('end_date', now.toISOString())
           .limit(1)
-          .single();
+          .maybeSingle();
 
         if (existingSub) {
           const currentEnd = new Date(existingSub.end_date);
@@ -525,7 +525,7 @@ router.post('/start-trial', authMiddleware, async (req, res) => {
         .from('offers')
         .select('trial_days')
         .eq('id', offerId)
-        .single();
+        .maybeSingle();
       if (offer?.trial_days) trialDays = offer.trial_days;
     }
 
@@ -545,7 +545,7 @@ router.post('/start-trial', authMiddleware, async (req, res) => {
         auto_renew: false,
       })
       .select()
-      .single();
+      .maybeSingle();
 
     if (subErr) throw subErr;
 
@@ -576,16 +576,16 @@ router.post('/cancel', authMiddleware, async (req, res) => {
 
   try {
     // Find active subscription
-    const { data: sub, error: subErr } = await supabaseAdmin
+    const { data: sub } = await supabaseAdmin
       .from('subscriptions')
       .select('*')
       .eq('user_id', userId)
       .eq('status', 'active')
       .order('end_date', { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
 
-    if (subErr || !sub) {
+    if (!sub) {
       return res.status(400).json({ error: 'No active subscription found' });
     }
 
