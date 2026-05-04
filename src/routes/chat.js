@@ -220,7 +220,7 @@ router.get('/website', authMiddleware, async (req, res) => {
 
 // POST /api/chat/website — Send message in website builder
 router.post('/website', authMiddleware, async (req, res) => {
-  const { message } = req.body;
+  const { message, mode } = req.body;
   const userId = req.user.id;
   if (!message) return res.status(400).json({ error: 'message required' });
 
@@ -245,12 +245,21 @@ router.post('/website', authMiddleware, async (req, res) => {
       content: message,
     });
 
-    // Check AI enabled
+    // Human support mode — skip Claude, notify admin
+    if (mode === 'human') {
+      const msg = '✅ Message received! Our support team will get back to you within a few hours.';
+      await supabaseAdmin.from('messages').insert({ conversation_id: convId, sender_type: 'ai', content: msg });
+      // Mark conversation as needing human attention
+      await supabaseAdmin.from('conversations').update({ status: 'needs_human', updated_at: new Date().toISOString() }).eq('id', convId);
+      return res.json({ reply: msg, senderType: 'ai', action: null, conversationId: convId });
+    }
+
+    // Check AI enabled by admin toggle
     const aiEnabled = await isAiEnabled();
     if (!aiEnabled) {
       const msg = '🧑‍💼 Our team has received your message and will reply shortly.';
       await supabaseAdmin.from('messages').insert({ conversation_id: convId, sender_type: 'ai', content: msg });
-      return res.json({ reply: msg, action: null, conversationId: convId });
+      return res.json({ reply: msg, senderType: 'ai', action: null, conversationId: convId });
     }
 
     // Fetch full history
