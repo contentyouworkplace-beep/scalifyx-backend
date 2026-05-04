@@ -151,6 +151,207 @@ function buildLocalReply(userMessage) {
   };
 }
 
+// ════════════════════════════════════════════════════════════
+// WEBSITE BUILDER — 1 project per paid user, persists forever
+// ════════════════════════════════════════════════════════════
+
+const WEBSITE_BUILDER_GREETING = `Hey! 👋 Welcome to your **Scalify AI Website Builder**!
+
+I'm going to create a professional website for your business in just a few minutes. 🚀
+
+Let's start — **what type of business do you have?**
+(e.g. Restaurant, Salon, Doctor, Clothing Shop, Coaching, Gym, etc.)`;
+
+// Get or create the single website-builder conversation for this user
+async function getOrCreateWebsiteConversation(userId) {
+  const { data: existing } = await supabaseAdmin
+    .from('conversations')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('type', 'website_builder')
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (existing) return { convId: existing.id, isNew: false };
+
+  const { data: conv } = await supabaseAdmin
+    .from('conversations')
+    .insert({ user_id: userId, type: 'website_builder', status: 'active' })
+    .select('id')
+    .single();
+
+  // Save greeting as first AI message
+  await supabaseAdmin.from('messages').insert({
+    conversation_id: conv.id,
+    sender_type: 'ai',
+    content: WEBSITE_BUILDER_GREETING,
+  });
+
+  return { convId: conv.id, isNew: true };
+}
+
+// GET /api/chat/website — Load website builder conversation + website info
+router.get('/website', authMiddleware, async (req, res) => {
+  const userId = req.user.id;
+  try {
+    const { convId, isNew } = await getOrCreateWebsiteConversation(userId);
+
+    const { data: messages } = await supabaseAdmin
+      .from('messages')
+      .select('id, sender_type, content, created_at')
+      .eq('conversation_id', convId)
+      .order('created_at', { ascending: true });
+
+    const { data: website } = await supabaseAdmin
+      .from('websites')
+      .select('id, business_name, deployed_url, status, created_at')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    res.json({ conversationId: convId, messages: messages || [], website: website || null, isNew });
+  } catch (err) {
+    console.error('Website chat load error:', err);
+    res.status(500).json({ error: 'Failed to load' });
+  }
+});
+
+// POST /api/chat/website — Send message in website builder
+router.post('/website', authMiddleware, async (req, res) => {
+  const { message } = req.body;
+  const userId = req.user.id;
+  if (!message) return res.status(400).json({ error: 'message required' });
+
+  try {
+    // Check user is paid
+    const { data: profile } = await supabaseAdmin
+      .from('profiles')
+      .select('plan')
+      .eq('id', userId)
+      .single();
+
+    if (!profile || profile.plan !== 'pro') {
+      return res.status(403).json({ error: 'Upgrade to Scalify Pro to use the AI website builder.' });
+    }
+
+    const { convId } = await getOrCreateWebsiteConversation(userId);
+
+    // Save user message
+    await supabaseAdmin.from('messages').insert({
+      conversation_id: convId,
+      sender_id: userId,
+      sender_type: 'user',
+      content: message,
+    });
+
+    // Check AI enabled
+    const aiEnabled = await isAiEnabled();
+    if (!aiEnabled) {
+      const msg = '🧑‍💼 Our team has received your message and will reply shortly.';
+      await supabaseAdmin.from('messages').insert({ conversation_id: convId, sender_type: 'ai', content: msg });
+      return res.json({ reply: msg, action: null, conversationId: convId });
+    }
+
+    // Fetch full history
+    const { data: msgHistory } = await supabaseAdmin
+      .from('messages')
+      .select('sender_type, content')
+      .eq('conversation_id', convId)
+      .order('created_at', { ascending: true })
+      .limit(80);
+
+    const history = (msgHistory || []).map((m) => ({
+      role: m.sender_type === 'user' ? 'user' : 'assistant',
+      content: m.content,
+    }));
+
+    // Fetch existing website for edit context
+    const { data: existingWebsite } = await supabaseAdmin
+      .from('websites')
+      .select('*')
+      .eq('user_id', userId)
+      .limit(1)
+      .maybeSingle();
+
+    let userMessage = message;
+    if (existingWebsite && history.length <= 3) {
+      userMessage = `[User already has a website: ${existingWebsite.business_name}, URL: ${existingWebsite.deployed_url}]\n\n${message}`;
+    }
+
+    const result = await processChat(history.slice(0, -1), userMessage);
+
+    // Handle website generation / edit actions
+    let actionResult = null;
+    if (result.action?.action === 'GENERATE_WEBSITE' && !existingWebsite) {
+      try {
+        const { generateWebsite } = require('../services/websiteGenerator');
+        const { deploySite } = require('../services/siteDeployer');
+        const website = await generateWebsite(result.action.data);
+        const deployResult = await deploySite(website.subdomain, website.files, website.siteId);
+
+        const { data: savedSite } = await supabaseAdmin.from('websites').insert({
+          user_id: userId,
+          site_id: website.siteId,
+          subdomain: website.subdomain,
+          business_name: result.action.data.businessName,
+          business_type: result.action.data.businessType,
+          description: result.action.data.description,
+          html_content: website.html,
+          theme_color: result.action.data.colorTheme || '#10B981',
+          services: result.action.data.services || [],
+          contact: { phone: result.action.data.phone, whatsapp: result.action.data.whatsapp, address: result.action.data.address },
+          template: 'nextjs',
+          status: deployResult ? 'live' : 'generated',
+          deployed_url: deployResult?.url || website.url,
+          vercel_project_id: deployResult?.projectId || null,
+          vercel_url: deployResult?.vercelUrl || null,
+        }).select().single();
+
+        await supabaseAdmin.from('profiles').update({
+          business_name: result.action.data.businessName,
+          business_type: result.action.data.businessType,
+          website_url: deployResult?.url || website.url,
+        }).eq('id', userId);
+
+        actionResult = { type: 'WEBSITE_CREATED', url: deployResult?.url || website.url, website: savedSite };
+      } catch (genErr) {
+        console.error('Website generation error:', genErr.message);
+        actionResult = { type: 'GENERATION_FAILED', error: genErr.message };
+      }
+    } else if (result.action?.action === 'EDIT_WEBSITE' && existingWebsite) {
+      const changes = result.action.changes || {};
+      const updates = {};
+      if (changes.businessName) updates.business_name = changes.businessName;
+      if (changes.themeColor) updates.theme_color = changes.themeColor;
+      if (changes.services) updates.services = changes.services;
+      if (changes.contact) updates.contact = changes.contact;
+      if (changes.description) updates.description = changes.description;
+      if (Object.keys(updates).length > 0) {
+        await supabaseAdmin.from('websites').update(updates).eq('id', existingWebsite.id);
+      }
+      actionResult = { type: 'WEBSITE_EDITED', changes: Object.keys(updates) };
+    }
+
+    const aiReply = result.fullReply || result.reply;
+    const replyWithUrl = aiReply + (actionResult?.url ? `\n\n🌐 Your website is live: **${actionResult.url}**` : '');
+
+    await supabaseAdmin.from('messages').insert({
+      conversation_id: convId,
+      sender_type: 'ai',
+      content: replyWithUrl,
+    });
+
+    await supabaseAdmin.from('conversations').update({ updated_at: new Date().toISOString() }).eq('id', convId);
+
+    res.json({ reply: replyWithUrl, action: actionResult, conversationId: convId });
+  } catch (err) {
+    console.error('Website builder error:', err);
+    res.status(500).json({ error: 'Failed to process message' });
+  }
+});
+
 // POST /api/chat/sales — FAQ chatbot for free users (NO Claude API)
 router.post('/sales', async (req, res) => {
   const { message } = req.body;
