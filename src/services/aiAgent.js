@@ -78,7 +78,7 @@ async function processChat(conversationHistory, userMessage) {
   ];
 
   const response = await client.messages.create({
-    model: 'claude-sonnet-4-20250514',
+    model: 'claude-sonnet-4-5',
     max_tokens: 2048,
     system: SYSTEM_PROMPT,
     messages,
@@ -116,7 +116,7 @@ async function processChat(conversationHistory, userMessage) {
  */
 async function analyzeScreenshot(imageBase64, userNotes = '') {
   const response = await client.messages.create({
-    model: 'claude-sonnet-4-20250514',
+    model: 'claude-sonnet-4-5',
     max_tokens: 1024,
     messages: [{
       role: 'user',
@@ -162,7 +162,7 @@ Respond in JSON:
  */
 async function analyzeURLReference(url) {
   const response = await client.messages.create({
-    model: 'claude-sonnet-4-20250514',
+    model: 'claude-sonnet-4-5',
     max_tokens: 1024,
     messages: [{
       role: 'user',
@@ -321,7 +321,7 @@ FINAL CHECK BEFORE RESPONDING:
 - Does the hero headline make you want to scroll down? Or is it forgettable?`;
 
   const response = await client.messages.create({
-    model: 'claude-sonnet-4-20250514',
+    model: 'claude-sonnet-4-5',
     max_tokens: 8192,
     messages: [{ role: 'user', content: prompt }],
   });
@@ -406,7 +406,7 @@ async function processSalesChat(conversationHistory, userMessage) {
   ];
 
   const response = await client.messages.create({
-    model: 'claude-sonnet-4-20250514',
+    model: 'claude-sonnet-4-5',
     max_tokens: 1024,
     system: systemPrompt,
     messages,
