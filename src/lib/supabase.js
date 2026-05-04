@@ -1,15 +1,35 @@
 const { createClient } = require('@supabase/supabase-js');
 
-// Public client (respects RLS)
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_ANON_KEY
-);
+let _supabase = null;
+let _supabaseAdmin = null;
 
-// Admin client (bypasses RLS — use for backend operations)
-const supabaseAdmin = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY
-);
+function getSupabase() {
+  if (!_supabase) {
+    _supabase = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_ANON_KEY
+    );
+  }
+  return _supabase;
+}
+
+function getSupabaseAdmin() {
+  if (!_supabaseAdmin) {
+    _supabaseAdmin = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_KEY
+    );
+  }
+  return _supabaseAdmin;
+}
+
+// Lazy proxies — keep existing `supabase.from(...)` usage working
+const supabase = new Proxy({}, {
+  get(_, prop) { return getSupabase()[prop]; },
+});
+
+const supabaseAdmin = new Proxy({}, {
+  get(_, prop) { return getSupabaseAdmin()[prop]; },
+});
 
 module.exports = { supabase, supabaseAdmin };

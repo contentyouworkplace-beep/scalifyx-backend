@@ -3,7 +3,10 @@ const { generateWebsiteContent } = require('./aiAgent');
 const fs = require('fs');
 const path = require('path');
 
-const SITES_DIR = path.join(__dirname, '..', '..', 'generated-sites');
+// On Vercel serverless, only /tmp is writable
+const SITES_DIR = process.env.VERCEL
+  ? path.join('/tmp', 'generated-sites')
+  : path.join(__dirname, '..', '..', 'generated-sites');
 
 /**
  * Generate a Next.js project from business data
@@ -39,7 +42,7 @@ async function generateWebsite(businessData) {
     fs.writeFileSync(fullPath, fileContent, 'utf-8');
   }
 
-  const url = `https://${subdomain}.${process.env.SITE_DOMAIN || 'goplnr.com'}`;
+  const url = `https://${subdomain}.${process.env.SITE_DOMAIN || 'scalifyapp.com'}`;
 
   return {
     siteId,

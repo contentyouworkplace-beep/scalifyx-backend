@@ -17,7 +17,7 @@ const CF_API = 'https://api.cloudflare.com/client/v4';
 const VERCEL_TOKEN = process.env.VERCEL_API_TOKEN;
 const CF_TOKEN = process.env.CLOUDFLARE_API_TOKEN;
 const CF_ZONE_ID = process.env.CLOUDFLARE_ZONE_ID;
-const SITE_DOMAIN = process.env.SITE_DOMAIN || 'goplnr.com';
+const SITE_DOMAIN = process.env.SITE_DOMAIN || 'scalifyapp.com';
 
 /**
  * Deploy a Next.js site end-to-end

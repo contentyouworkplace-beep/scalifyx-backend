@@ -5,6 +5,42 @@ const { authMiddleware, adminMiddleware } = require('../middleware/auth');
 const { sendPushNotification } = require('../lib/pushNotifications');
 const { sendWebPushBroadcast } = require('../lib/webPush');
 
+let _Razorpay = null;
+function getRazorpay() {
+  if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) return null;
+  try {
+    if (!_Razorpay) _Razorpay = require('razorpay');
+    return new _Razorpay({
+      key_id: process.env.RAZORPAY_KEY_ID,
+      key_secret: process.env.RAZORPAY_KEY_SECRET,
+    });
+  } catch (e) {
+    console.error('Razorpay init error:', e.message);
+    return null;
+  }
+}
+
+async function createRazorpayLink(offer) {
+  try {
+    const razorpay = getRazorpay();
+    if (!razorpay) return null;
+    const link = await razorpay.paymentLink.create({
+      amount: offer.price * 100,
+      currency: 'INR',
+      description: `${offer.name} — Monthly`,
+      notify: { sms: true, email: true },
+      reminder_enable: true,
+      notes: { plan: offer.plan_type, offerId: offer.id || '' },
+      callback_url: `${process.env.FRONTEND_URL || 'https://scalifyapp.com'}/dashboard/plans?payment=success`,
+      callback_method: 'get',
+    });
+    return link.short_url;
+  } catch (err) {
+    console.error('Razorpay link creation error:', err.message);
+    return null;
+  }
+}
+
 // ─── In-memory cache for AI setting (loaded from DB on first request) ───
 let _aiChatEnabled = null; // null = not loaded yet
 
@@ -249,6 +285,17 @@ router.post('/offers', authMiddleware, adminMiddleware, async (req, res) => {
       .single();
 
     if (error) throw error;
+
+    // Auto-generate Razorpay payment link for paid plans
+    let paymentLinkUrl = null;
+    if ((plan_type || 'pro') === 'pro' && (price || 0) > 0) {
+      paymentLinkUrl = await createRazorpayLink({ ...data, price: price || 0 });
+      if (paymentLinkUrl) {
+        await supabaseAdmin.from('offers').update({ razorpay_payment_link_url: paymentLinkUrl }).eq('id', data.id);
+        data.razorpay_payment_link_url = paymentLinkUrl;
+      }
+    }
+
     res.json({ success: true, offer: data });
   } catch (error) {
     console.error('Create offer error:', error);
@@ -271,6 +318,17 @@ router.put('/offers/:id', authMiddleware, adminMiddleware, async (req, res) => {
     if (features !== undefined) updates.features = features;
     if (is_active !== undefined) updates.is_active = is_active;
     if (sort_order !== undefined) updates.sort_order = sort_order;
+
+    // Regenerate Razorpay payment link if price changed and it's a paid plan
+    if (price !== undefined && (plan_type || 'pro') !== 'trial' && price > 0) {
+      const { data: existing } = await supabaseAdmin.from('offers').select('name, plan_type').eq('id', req.params.id).single();
+      const offerName = name || existing?.name || 'Scalify Pro';
+      const offerPlanType = plan_type || existing?.plan_type || 'pro';
+      if (offerPlanType !== 'trial') {
+        const newLink = await createRazorpayLink({ name: offerName, price, id: req.params.id, plan_type: offerPlanType });
+        if (newLink) updates.razorpay_payment_link_url = newLink;
+      }
+    }
 
     const { data, error } = await supabaseAdmin
       .from('offers')

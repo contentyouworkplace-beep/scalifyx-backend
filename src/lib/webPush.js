@@ -3,16 +3,26 @@ try { webpush = require('web-push'); } catch { webpush = null; }
 
 const { supabaseAdmin } = require('./supabase');
 
-if (webpush && process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
-  webpush.setVapidDetails(
-    `mailto:${process.env.VAPID_EMAIL || 'support@scalifyapp.com'}`,
-    process.env.VAPID_PUBLIC_KEY,
-    process.env.VAPID_PRIVATE_KEY
-  );
+let _vapidConfigured = false;
+function ensureVapid() {
+  if (_vapidConfigured || !webpush) return;
+  if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
+    try {
+      webpush.setVapidDetails(
+        `mailto:${process.env.VAPID_EMAIL || 'support@scalifyapp.com'}`,
+        process.env.VAPID_PUBLIC_KEY,
+        process.env.VAPID_PRIVATE_KEY
+      );
+      _vapidConfigured = true;
+    } catch (e) {
+      console.error('VAPID setup error:', e.message);
+    }
+  }
 }
 
 async function sendWebPushToUser(userId, title, body, data = {}) {
   if (!webpush) return;
+  ensureVapid();
   try {
     const { data: subs } = await supabaseAdmin
       .from('web_push_subscriptions')
@@ -32,6 +42,7 @@ async function sendWebPushToUser(userId, title, body, data = {}) {
 
 async function sendWebPushBroadcast(title, body, target = 'all', data = {}) {
   if (!webpush) return 0;
+  ensureVapid();
   try {
     let query = supabaseAdmin.from('web_push_subscriptions').select('subscription, user_id');
 
