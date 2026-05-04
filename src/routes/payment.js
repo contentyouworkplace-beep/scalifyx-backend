@@ -23,75 +23,47 @@ router.post('/create-payment-link', authMiddleware, async (req, res) => {
   const userId = req.user.id;
 
   try {
-    // Fetch user profile for prefill
-    const { data: profile } = await supabaseAdmin
-      .from('profiles')
-      .select('name, phone')
-      .eq('id', userId)
-      .maybeSingle();
+    const razorpay = getRazorpay();
+    if (!razorpay) {
+      return res.status(500).json({ error: 'Payment service not configured. Contact support.' });
+    }
 
-    // Get active offer price (dynamic from admin)
+    // Get active offer price
     let amount = PLAN_PRICE_PAISE;
-    let planName = 'Scalify Pro';
     const { data: offer } = await supabaseAdmin
       .from('offers')
-      .select('price, name')
+      .select('price')
       .eq('plan_type', 'pro')
       .eq('is_active', true)
       .order('sort_order', { ascending: true })
       .limit(1)
       .maybeSingle();
+    if (offer?.price) amount = offer.price * 100;
 
-    if (offer) {
-      amount = offer.price * 100;
-      planName = offer.name;
-    }
+    const frontendUrl = (process.env.FRONTEND_URL || 'https://scalifyapp.com').replace(/\/$/, '');
 
-    const razorpay = getRazorpay();
-    if (!razorpay) {
-      return res.status(500).json({ error: 'Payment service not configured' });
-    }
-
-    // Only include customer fields that are non-empty
-    const customer = {};
-    if (profile?.name) customer.name = profile.name;
-    if (profile?.phone) customer.contact = profile.phone;
-
-    // Create Razorpay Payment Link
     const paymentLink = await razorpay.paymentLink.create({
       amount,
       currency: 'INR',
-      description: `${planName} — Monthly`,
-      ...(Object.keys(customer).length > 0 ? { customer } : {}),
-      notify: { sms: !!profile?.phone, email: false },
-      reminder_enable: true,
-      notes: {
-        userId,
-        plan: 'pro',
-      },
-      callback_url: `${process.env.FRONTEND_URL || 'https://scalifyapp.com'}/dashboard/plans?payment=success`,
+      description: 'Scalify Pro - Monthly',
+      notes: { userId, plan: 'pro' },
+      callback_url: `${frontendUrl}/dashboard/plans?payment=success`,
       callback_method: 'get',
     });
 
-    // Create pending payment record
-    await supabaseAdmin
-      .from('payments')
-      .insert({
-        user_id: userId,
-        amount: amount / 100,
-        status: 'pending',
-        plan: 'pro',
-        transaction_id: paymentLink.id,
-      });
-
-    res.json({
-      success: true,
-      paymentLink: paymentLink.short_url, // e.g. https://rzp.io/i/abc123
-      paymentLinkId: paymentLink.id,
+    await supabaseAdmin.from('payments').insert({
+      user_id: userId,
+      amount: amount / 100,
+      status: 'pending',
+      plan: 'pro',
+      transaction_id: paymentLink.id,
     });
+
+    res.json({ success: true, paymentLink: paymentLink.short_url, paymentLinkId: paymentLink.id });
   } catch (error) {
-    console.error('Create payment link error:', error);
-    res.status(500).json({ error: 'Failed to create payment link', detail: error?.message || String(error) });
+    const detail = error?.error?.description || error?.message || String(error);
+    console.error('Create payment link error:', detail, error);
+    res.status(500).json({ error: detail });
   }
 });
 
