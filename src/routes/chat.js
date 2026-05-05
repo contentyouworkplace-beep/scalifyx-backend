@@ -181,8 +181,22 @@ async function getOrCreateWebsiteConversation(userId) {
     .select('id')
     .maybeSingle();
 
-  if (convError || !conv) {
+  // Handle race condition: if insert failed, another request beat us to it
+  if (convError) {
+    if (convError.code === '23505') { // unique constraint violation
+      const { data: retryExisting } = await supabaseAdmin
+        .from('conversations')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('type', 'ai')
+        .maybeSingle();
+      if (retryExisting) return { convId: retryExisting.id, isNew: false };
+    }
     throw new Error(convError?.message || 'Failed to create conversation');
+  }
+
+  if (!conv) {
+    throw new Error('Failed to create conversation');
   }
 
   // Save greeting as first AI message
