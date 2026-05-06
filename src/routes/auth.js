@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { supabaseAdmin } = require('../lib/supabase');
 const { sendWebPushToUser } = require('../lib/webPush');
+const { sendWelcomeMessage } = require('../lib/aisensy');
 
 async function sendNewSignupNotifications(name, email, phone) {
   try {
@@ -70,6 +71,11 @@ router.post('/signup', async (req, res) => {
 
     // Send notifications to admins about new signup (non-blocking)
     sendNewSignupNotifications(name || 'New User', email, phone).catch(() => {});
+
+    // Send WhatsApp welcome message to user (non-blocking, only if phone exists)
+    if (phone) {
+      sendWelcomeMessage({ name: name || 'there', email, phone }).catch(() => {});
+    }
 
     res.json({ success: true, userId: data.user.id });
   } catch (error) {
