@@ -1,6 +1,28 @@
 const express = require('express');
 const router = express.Router();
 const { supabaseAdmin } = require('../lib/supabase');
+const { sendWebPushToUser } = require('../lib/webPush');
+
+async function sendNewSignupNotifications(name, email, phone) {
+  try {
+    const { data: admins } = await supabaseAdmin
+      .from('profiles')
+      .select('id')
+      .eq('role', 'admin');
+
+    if (!admins || admins.length === 0) return;
+
+    const title = '🔔 New Lead';
+    const body = `${name} (${email}) just signed up`;
+    const data = { link: '/admin' };
+
+    await Promise.allSettled(
+      admins.map((admin) => sendWebPushToUser(admin.id, title, body, data))
+    );
+  } catch (error) {
+    console.error('Failed to send signup notifications to admins:', error);
+  }
+}
 
 // POST /api/auth/signup — Create user account
 router.post('/signup', async (req, res) => {
@@ -34,6 +56,9 @@ router.post('/signup', async (req, res) => {
         .update(updates)
         .eq('id', data.user.id);
     }
+
+    // Send notifications to admins about new signup (non-blocking)
+    sendNewSignupNotifications(name || 'New User', email, phone).catch(() => {});
 
     res.json({ success: true, userId: data.user.id });
   } catch (error) {
