@@ -21,22 +21,36 @@ function ensureVapid() {
 }
 
 async function sendWebPushToUser(userId, title, body, data = {}) {
-  if (!webpush) return;
+  if (!webpush) {
+    console.warn('⚠️  web-push module not available');
+    return;
+  }
   ensureVapid();
   try {
+    console.log('🔔 Sending push notification to user:', userId.slice(0, 8) + '...');
     const { data: subs } = await supabaseAdmin
       .from('web_push_subscriptions')
       .select('subscription')
       .eq('user_id', userId);
 
-    if (!subs || subs.length === 0) return;
+    if (!subs || subs.length === 0) {
+      console.warn('⚠️  No subscriptions found for user:', userId.slice(0, 8) + '...');
+      return;
+    }
 
+    console.log(`📤 Found ${subs.length} subscription(s), sending notifications...`);
     const payload = JSON.stringify({ title, body, data });
-    await Promise.allSettled(
-      subs.map((s) => webpush.sendNotification(s.subscription, payload).catch(() => {}))
+    const results = await Promise.allSettled(
+      subs.map((s, i) => {
+        console.log(`  ↳ Sending to subscription ${i + 1}/${subs.length}...`);
+        return webpush.sendNotification(s.subscription, payload);
+      })
     );
+
+    const successful = results.filter((r) => r.status === 'fulfilled').length;
+    console.log(`✅ ${successful}/${results.length} notifications sent successfully`);
   } catch (err) {
-    console.error('Web push error:', err);
+    console.error('❌ Web push error:', err);
   }
 }
 

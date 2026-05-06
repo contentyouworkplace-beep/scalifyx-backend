@@ -5,22 +5,33 @@ const { sendWebPushToUser } = require('../lib/webPush');
 
 async function sendNewSignupNotifications(name, email, phone) {
   try {
+    console.log('📢 New signup detected:', { name, email, phone: phone ? '***' : 'N/A' });
     const { data: admins } = await supabaseAdmin
       .from('profiles')
-      .select('id')
+      .select('id, email, name')
       .eq('role', 'admin');
 
-    if (!admins || admins.length === 0) return;
+    if (!admins || admins.length === 0) {
+      console.warn('⚠️  No admin users found to notify');
+      return;
+    }
 
+    console.log(`👨‍💼 Found ${admins.length} admin(s) to notify`);
     const title = '🔔 New Lead';
     const body = `${name} (${email}) just signed up`;
     const data = { link: '/admin' };
 
-    await Promise.allSettled(
-      admins.map((admin) => sendWebPushToUser(admin.id, title, body, data))
+    const results = await Promise.allSettled(
+      admins.map((admin) => {
+        console.log(`  ↳ Notifying: ${admin.name || admin.email}`);
+        return sendWebPushToUser(admin.id, title, body, data);
+      })
     );
+
+    const successful = results.filter((r) => r.status === 'fulfilled').length;
+    console.log(`✅ Notified ${successful}/${results.length} admin(s)`);
   } catch (error) {
-    console.error('Failed to send signup notifications to admins:', error);
+    console.error('❌ Failed to send signup notifications to admins:', error);
   }
 }
 
