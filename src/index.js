@@ -25,6 +25,7 @@ app.use('/api/website', require('./routes/website'));
 app.use('/api/payment', require('./routes/payment'));
 app.use('/api/user', require('./routes/user'));
 app.use('/api/admin', require('./routes/admin'));
+app.use('/api/offers', require('./routes/offers'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/contact', require('./routes/contact'));
 

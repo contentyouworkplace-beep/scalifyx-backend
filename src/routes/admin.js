@@ -216,20 +216,59 @@ router.delete('/notifications/:id', authMiddleware, adminMiddleware, async (req,
 // GET /api/admin/dashboard — Dashboard stats
 router.get('/dashboard', authMiddleware, adminMiddleware, async (req, res) => {
   try {
-    const [users, websites, payments, subscriptions] = await Promise.all([
-      supabaseAdmin.from('profiles').select('*', { count: 'exact', head: true }).neq('role', 'admin'),
-      supabaseAdmin.from('websites').select('*', { count: 'exact', head: true }).eq('status', 'live'),
-      supabaseAdmin.from('payments').select('amount').eq('status', 'completed'),
-      supabaseAdmin.from('payments').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const [allUsers, trialSubs, paidSubs, domainUsers, monthlyNewUsers, expiredTrialSubs, monthlySubs, allSubs] = await Promise.all([
+      // All non-admin users
+      supabaseAdmin.from('profiles').select('id', { count: 'exact', head: true }),
+      // Users with active/expired trials
+      supabaseAdmin.from('subscriptions').select('user_id', { count: 'exact', head: true }).eq('plan', 'trial'),
+      // Users with paid plans (upgraded)
+      supabaseAdmin.from('subscriptions').select('user_id', { count: 'exact' }).neq('plan', 'trial').eq('status', 'active'),
+      // Users who purchased domain
+      supabaseAdmin.from('profiles').select('id', { count: 'exact', head: true }).eq('domain_purchased', true),
+      // New users this month
+      supabaseAdmin.from('profiles').select('id', { count: 'exact', head: true }).gte('created_at', monthStart.toISOString()),
+      // Trial expired but not upgraded (trial ended + no paid subscription)
+      supabaseAdmin.from('subscriptions').select('user_id').eq('plan', 'trial').lt('end_date', now.toISOString()),
+      // Monthly subscriptions revenue (this month's active subscriptions)
+      supabaseAdmin.from('subscriptions').select('amount').neq('plan', 'trial').eq('status', 'active').gte('created_at', monthStart.toISOString()),
+      // All active subscriptions revenue (lifetime)
+      supabaseAdmin.from('subscriptions').select('amount').neq('plan', 'trial').eq('status', 'active'),
     ]);
 
-    const totalRevenue = (payments.data || []).reduce((sum, p) => sum + (p.amount || 0), 0);
+    // Calculate unique paid users
+    const paidUserIds = new Set((paidSubs.data || []).map(s => s.user_id));
+    const uniquePaidUsers = paidUserIds.size;
+
+    // Calculate trial-expired-not-upgraded
+    const expiredTrialUserIds = new Set((expiredTrialSubs.data || []).map(s => s.user_id));
+    const trialExpiredNotUpgraded = expiredTrialUserIds.size;
+
+    // Calculate monthly revenue (from this month's paid subscriptions)
+    const monthlyRevenue = ((monthlySubs.data || [])
+      .reduce((sum, s) => sum + (parseFloat(s.amount) || 0), 0));
+
+    // Calculate total revenue (from all active paid subscriptions)
+    const totalRevenue = ((allSubs.data || [])
+      .reduce((sum, s) => sum + (parseFloat(s.amount) || 0), 0));
 
     res.json({
-      totalUsers: users.count || 0,
-      activeSites: websites.count || 0,
-      totalRevenue,
-      pendingPayments: subscriptions.count || 0,
+      metrics: {
+        totalFreeTrialUsers: trialSubs.count || 0,
+        domainPurchasedUsers: domainUsers.count || 0,
+        uniquePaidUsers: uniquePaidUsers,
+        trialExpiredNotUpgraded: trialExpiredNotUpgraded,
+        monthly: {
+          newUsers: monthlyNewUsers.count || 0,
+          revenue: Math.round(monthlyRevenue * 100) / 100,
+        },
+        totalRevenue: Math.round(totalRevenue * 100) / 100,
+      },
+      totals: {
+        totalUsers: allUsers.count || 0,
+      }
     });
   } catch (error) {
     console.error('Dashboard error:', error);
@@ -240,15 +279,15 @@ router.get('/dashboard', authMiddleware, adminMiddleware, async (req, res) => {
 // GET /api/admin/activity — Recent activity
 router.get('/activity', authMiddleware, adminMiddleware, async (req, res) => {
   try {
-    const [recentUsers, recentPayments, recentSites] = await Promise.all([
-      supabaseAdmin.from('profiles').select('id, name, phone, created_at').order('created_at', { ascending: false }).limit(5),
-      supabaseAdmin.from('payments').select('*, profiles(name)').order('created_at', { ascending: false }).limit(5),
+    const [recentUsers, recentTransactions, recentSites] = await Promise.all([
+      supabaseAdmin.from('profiles').select('id, name, email, phone, created_at').order('created_at', { ascending: false }).limit(5),
+      supabaseAdmin.from('transactions').select('id, user_id, type, amount, created_at').order('created_at', { ascending: false }).limit(5),
       supabaseAdmin.from('websites').select('business_name, deployed_url, created_at').order('created_at', { ascending: false }).limit(5),
     ]);
 
     res.json({
       recentUsers: recentUsers.data || [],
-      recentPayments: recentPayments.data || [],
+      recentPayments: recentTransactions.data || [],
       recentSites: recentSites.data || [],
     });
   } catch (error) {
@@ -446,6 +485,123 @@ router.delete('/user-offers/:id', authMiddleware, adminMiddleware, async (req, r
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: 'Failed to delete user offer' });
+  }
+});
+
+// GET /api/admin/users — Get all users with onboarding status
+router.get('/users', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { data: profiles, error } = await supabaseAdmin
+      .from('profiles')
+      .select(`
+        id,
+        name,
+        email,
+        phone,
+        domain_purchased,
+        created_at
+      `)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    // Enrich with subscription data
+    const enrichedUsers = await Promise.all(
+      (profiles || []).map(async (user) => {
+        const { data: sub } = await supabaseAdmin
+          .from('subscriptions')
+          .select('plan, status, end_date')
+          .eq('user_id', user.id)
+          .order('end_date', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        return {
+          ...user,
+          subscription: {
+            plan: sub?.plan || 'none',
+            status: sub?.status || 'inactive',
+            end_date: sub?.end_date || null,
+          },
+        };
+      })
+    );
+
+    res.json({ success: true, users: enrichedUsers });
+  } catch (error) {
+    console.error('Fetch users error:', error);
+    res.status(500).json({ error: 'Failed to fetch users' });
+  }
+});
+
+// POST /api/admin/users/:id/toggle-domain — Toggle domain purchased status
+router.post('/users/:id/toggle-domain', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Get current status
+    const { data: user } = await supabaseAdmin
+      .from('profiles')
+      .select('domain_purchased')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Toggle status
+    const { data: updated, error } = await supabaseAdmin
+      .from('profiles')
+      .update({ domain_purchased: !user.domain_purchased })
+      .eq('id', id)
+      .select()
+      .maybeSingle();
+
+    if (error) throw error;
+
+    // Log transaction if domain was purchased
+    if (!user.domain_purchased) {
+      await supabaseAdmin
+        .from('transactions')
+        .insert({
+          user_id: id,
+          type: 'domain_purchased',
+          status: 'completed',
+        });
+    }
+
+    res.json({ success: true, domain_purchased: updated.domain_purchased });
+  } catch (error) {
+    console.error('Toggle domain error:', error);
+    res.status(500).json({ error: 'Failed to update domain status' });
+  }
+});
+
+// GET /api/admin/funnel — Conversion funnel metrics
+router.get('/funnel', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const [totalSignups, activeTrials, paidUsers, domainPurchased] = await Promise.all([
+      supabaseAdmin.from('profiles').select('id', { count: 'exact', head: true }).neq('role', 'admin'),
+      supabaseAdmin.from('subscriptions').select('id', { count: 'exact', head: true }).eq('plan', 'trial'),
+      supabaseAdmin.from('subscriptions').select('id', { count: 'exact', head: true }).neq('plan', 'trial').eq('status', 'active'),
+      supabaseAdmin.from('profiles').select('id', { count: 'exact', head: true }).eq('domain_purchased', true),
+    ]);
+
+    const totalCount = totalSignups.count || 1;
+
+    res.json({
+      success: true,
+      funnel: {
+        totalSignups: totalSignups.count || 0,
+        signupToTrial: Math.round(((activeTrials.count || 0) / totalCount) * 100),
+        trialToUpgrade: Math.round(((paidUsers.count || 0) / totalCount) * 100),
+        domainPurchaseRate: Math.round(((domainPurchased.count || 0) / totalCount) * 100),
+      },
+    });
+  } catch (error) {
+    console.error('Funnel error:', error);
+    res.status(500).json({ error: 'Failed to fetch funnel metrics' });
   }
 });
 

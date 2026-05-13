@@ -58,6 +58,8 @@ router.post('/signup', async (req, res) => {
 
     if (error) throw error;
 
+    const userId = data.user.id;
+
     // Update profile with name and phone
     const updates = { email };
     if (name) updates.name = name;
@@ -66,8 +68,40 @@ router.post('/signup', async (req, res) => {
       await supabaseAdmin
         .from('profiles')
         .update(updates)
-        .eq('id', data.user.id);
+        .eq('id', userId);
     }
+
+    // 🎯 AUTO-ACTIVATE 7-DAY FREE TRIAL
+    const trialDays = 7;
+    const trialEndDate = new Date();
+    trialEndDate.setDate(trialEndDate.getDate() + trialDays);
+
+    const { data: subscription, error: trialError } = await supabaseAdmin
+      .from('subscriptions')
+      .insert({
+        user_id: userId,
+        plan: 'trial',
+        amount: 0,
+        status: 'active',
+        start_date: new Date().toISOString(),
+        end_date: trialEndDate.toISOString(),
+        auto_renew: false,
+      })
+      .select()
+      .maybeSingle();
+
+    if (trialError) {
+      console.error('❌ Failed to activate trial:', trialError);
+      throw trialError;
+    }
+
+    // Update profile plan to trial and store trial end date
+    await supabaseAdmin
+      .from('profiles')
+      .update({ plan: 'trial', trialEndsAt: trialEndDate.toISOString() })
+      .eq('id', userId);
+
+    console.log(`✅ Trial activated for user ${userId} until ${trialEndDate.toISOString()}`);
 
     // Send notifications to admins about new signup (non-blocking)
     sendNewSignupNotifications(name || 'New User', email, phone).catch(() => {});
@@ -77,7 +111,13 @@ router.post('/signup', async (req, res) => {
       sendWelcomeMessage({ name: name || 'there', email, phone }).catch(() => {});
     }
 
-    res.json({ success: true, userId: data.user.id });
+    res.json({
+      success: true,
+      userId,
+      trialActivated: true,
+      trialEndsAt: trialEndDate.toISOString(),
+      message: '7-day free trial activated'
+    });
   } catch (error) {
     console.error('Signup error:', error);
     res.status(400).json({ error: error.message || 'Signup failed' });

@@ -17,10 +17,11 @@ const PLAN_PRICE_PAISE = PLAN_PRICE * 100;
 
 // ─────────────────────────────────────────────
 // POST /api/payment/create-payment-link
-// Creates a Razorpay Payment Link (no auto-debit)
+// Creates a Razorpay Payment Link (public, no auth required)
+// For website landing page ₹199 service
 // ─────────────────────────────────────────────
-router.post('/create-payment-link', authMiddleware, async (req, res) => {
-  const userId = req.user.id;
+router.post('/create-payment-link', async (req, res) => {
+  const { redirectTo, email, phone, name } = req.body || {};
 
   try {
     const razorpay = getRazorpay();
@@ -28,34 +29,29 @@ router.post('/create-payment-link', authMiddleware, async (req, res) => {
       return res.status(500).json({ error: 'Payment service not configured. Contact support.' });
     }
 
-    // Get active offer price
-    let amount = PLAN_PRICE_PAISE;
-    const { data: offer } = await supabaseAdmin
-      .from('offers')
-      .select('price')
-      .eq('plan_type', 'pro')
-      .eq('is_active', true)
-      .order('sort_order', { ascending: true })
-      .limit(1)
-      .maybeSingle();
-    if (offer?.price) amount = offer.price * 100;
+    // For public landing page: ₹199/month for website design service
+    let amount = 19900; // ₹199 in paise for website design service
+
+    // Determine callback URL based on redirectTo parameter
+    const baseUrl = 'https://scalifyapp.com';
+    const callbackPath = redirectTo === '/payment-success' ? '/payment-success' : '/payment-success';
+    const callbackUrl = `${baseUrl}${callbackPath}?payment=success`;
 
     const paymentLink = await razorpay.paymentLink.create({
       amount,
       currency: 'INR',
-      description: 'Scalify Pro - Monthly',
-      notes: { userId, plan: 'pro' },
-      callback_url: 'https://scalifyapp.com/dashboard/plans?payment=success',
+      description: 'Professional Website Design - ₹199/month',
+      customer_notify: 1,
+      notes: {
+        plan: 'website_design',
+        service: 'website_design_service'
+      },
+      callback_url: callbackUrl,
       callback_method: 'get',
     });
 
-    await supabaseAdmin.from('payments').insert({
-      user_id: userId,
-      amount: amount / 100,
-      status: 'pending',
-      plan: 'pro',
-      transaction_id: paymentLink.id,
-    });
+    // Log payment link creation (for public payments)
+    console.log(`📝 Public payment link created: ${paymentLink.id}, amount: ₹199`);
 
     res.json({ success: true, paymentLink: paymentLink.short_url, paymentLinkId: paymentLink.id });
   } catch (error) {
