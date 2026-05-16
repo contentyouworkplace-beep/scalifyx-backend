@@ -611,4 +611,171 @@ router.get('/funnel', authMiddleware, adminMiddleware, async (req, res) => {
   }
 });
 
+// ── DELETE /api/admin/users/:id — Hard delete user ────────────────────────────
+router.delete('/users/:id', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Delete related data first (FK constraints)
+    await Promise.allSettled([
+      supabaseAdmin.from('subscriptions').delete().eq('user_id', id),
+      supabaseAdmin.from('payments').delete().eq('user_id', id),
+      supabaseAdmin.from('websites').delete().eq('user_id', id),
+      supabaseAdmin.from('transactions').delete().eq('user_id', id),
+    ]);
+
+    // Delete profile row
+    await supabaseAdmin.from('profiles').delete().eq('id', id);
+
+    // Delete auth user (requires service role)
+    const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(id);
+    if (authError) {
+      console.error('Auth delete error:', authError);
+      return res.status(500).json({ error: authError.message });
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Delete user error:', error);
+    res.status(500).json({ error: 'Failed to delete user' });
+  }
+});
+
+// ── POST /api/admin/users — Create user ───────────────────────────────────────
+router.post('/users', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { email, password, name, phone, plan, amount } = req.body;
+    if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
+
+    // Create auth user (email auto-confirmed)
+    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+      user_metadata: { name: name || '', phone: phone || '' },
+    });
+    if (authError) return res.status(400).json({ error: authError.message });
+
+    const userId = authData.user.id;
+    const selectedPlan = plan || 'free';
+
+    // Create profile
+    await supabaseAdmin.from('profiles').upsert({
+      id: userId,
+      email,
+      name: name || '',
+      phone: phone || '',
+      plan: selectedPlan,
+    });
+
+    // If pro, create subscription + payment record
+    if (selectedPlan === 'pro') {
+      const now = new Date();
+      const end = new Date(now);
+      end.setDate(end.getDate() + 30);
+      const paidAmount = Number(amount) || 1499;
+
+      await supabaseAdmin.from('subscriptions').insert({
+        user_id: userId,
+        plan: 'pro',
+        amount: paidAmount,
+        status: 'active',
+        start_date: now.toISOString(),
+        end_date: end.toISOString(),
+        auto_renew: false,
+      });
+
+      await supabaseAdmin.from('payments').insert({
+        user_id: userId,
+        amount: paidAmount,
+        status: 'completed',
+        plan: 'pro',
+        method: 'manual_admin',
+      });
+    }
+
+    res.json({ success: true, userId });
+  } catch (error) {
+    console.error('Create user error:', error);
+    res.status(500).json({ error: 'Failed to create user' });
+  }
+});
+
+// ── POST /api/admin/users/:id/set-plan — Set plan + custom amount ─────────────
+router.post('/users/:id/set-plan', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { plan, amount, months = 1 } = req.body;
+    const selectedPlan = plan || 'free';
+    const paidAmount = Number(amount) || 1499;
+
+    // Cancel all existing active subscriptions
+    await supabaseAdmin
+      .from('subscriptions')
+      .update({ status: 'cancelled' })
+      .eq('user_id', id)
+      .eq('status', 'active');
+
+    if (selectedPlan === 'pro') {
+      const now = new Date();
+      const end = new Date(now);
+      end.setDate(end.getDate() + 30 * Number(months));
+
+      await supabaseAdmin.from('subscriptions').insert({
+        user_id: id,
+        plan: 'pro',
+        amount: paidAmount,
+        status: 'active',
+        start_date: now.toISOString(),
+        end_date: end.toISOString(),
+        auto_renew: false,
+      });
+
+      await supabaseAdmin.from('payments').insert({
+        user_id: id,
+        amount: paidAmount,
+        status: 'completed',
+        plan: 'pro',
+        method: 'manual_admin',
+      });
+    }
+
+    // Update profile plan
+    await supabaseAdmin.from('profiles').update({ plan: selectedPlan }).eq('id', id);
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Set plan error:', error);
+    res.status(500).json({ error: 'Failed to set plan' });
+  }
+});
+
+// ── POST /api/admin/users/:id/manual-upgrade — Quick upgrade to pro ───────────
+router.post('/users/:id/manual-upgrade', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const now = new Date();
+    const end = new Date(now);
+    end.setDate(end.getDate() + 30);
+
+    await supabaseAdmin
+      .from('subscriptions')
+      .update({ status: 'cancelled' })
+      .eq('user_id', id)
+      .eq('status', 'active');
+
+    await supabaseAdmin.from('subscriptions').insert({
+      user_id: id, plan: 'pro', amount: 1499, status: 'active',
+      start_date: now.toISOString(), end_date: end.toISOString(), auto_renew: false,
+    });
+
+    await supabaseAdmin.from('profiles').update({ plan: 'pro' }).eq('id', id);
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Manual upgrade error:', error);
+    res.status(500).json({ error: 'Failed to upgrade user' });
+  }
+});
+
 module.exports = router;
