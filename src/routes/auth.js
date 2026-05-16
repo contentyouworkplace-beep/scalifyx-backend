@@ -61,47 +61,13 @@ router.post('/signup', async (req, res) => {
     const userId = data.user.id;
 
     // Update profile with name and phone
-    const updates = { email };
+    const updates = { email, plan: 'free' };
     if (name) updates.name = name;
     if (phone) updates.phone = phone;
-    if (name || phone) {
-      await supabaseAdmin
-        .from('profiles')
-        .update(updates)
-        .eq('id', userId);
-    }
-
-    // 🎯 AUTO-ACTIVATE 7-DAY FREE TRIAL
-    const trialDays = 7;
-    const trialEndDate = new Date();
-    trialEndDate.setDate(trialEndDate.getDate() + trialDays);
-
-    const { data: subscription, error: trialError } = await supabaseAdmin
-      .from('subscriptions')
-      .insert({
-        user_id: userId,
-        plan: 'trial',
-        amount: 0,
-        status: 'active',
-        start_date: new Date().toISOString(),
-        end_date: trialEndDate.toISOString(),
-        auto_renew: false,
-      })
-      .select()
-      .maybeSingle();
-
-    if (trialError) {
-      console.error('❌ Failed to activate trial:', trialError);
-      throw trialError;
-    }
-
-    // Update profile plan to trial and store trial end date
     await supabaseAdmin
       .from('profiles')
-      .update({ plan: 'trial', trialEndsAt: trialEndDate.toISOString() })
+      .update(updates)
       .eq('id', userId);
-
-    console.log(`✅ Trial activated for user ${userId} until ${trialEndDate.toISOString()}`);
 
     // Send notifications to admins about new signup (non-blocking)
     sendNewSignupNotifications(name || 'New User', email, phone).catch(() => {});
@@ -114,9 +80,7 @@ router.post('/signup', async (req, res) => {
     res.json({
       success: true,
       userId,
-      trialActivated: true,
-      trialEndsAt: trialEndDate.toISOString(),
-      message: '7-day free trial activated'
+      message: 'Account created successfully'
     });
   } catch (error) {
     console.error('Signup error:', error);
