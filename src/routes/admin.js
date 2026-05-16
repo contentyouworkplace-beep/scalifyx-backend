@@ -494,38 +494,44 @@ router.get('/users', authMiddleware, adminMiddleware, async (req, res) => {
     const { data: profiles, error } = await supabaseAdmin
       .from('profiles')
       .select(`
-        id,
-        name,
-        email,
-        phone,
-        domain_purchased,
+        id, name, email, phone, plan,
+        business_name, business_category, business_city,
+        whatsapp_number, business_address, business_description,
+        logo_url, instagram_url, facebook_url, existing_website_url,
+        services, gallery_images,
+        domain_purchased, domain_name,
+        google_maps_link, onboarding_completed,
         created_at
       `)
       .order('created_at', { ascending: false });
 
     if (error) throw error;
 
-    // Enrich with subscription data
-    const enrichedUsers = await Promise.all(
-      (profiles || []).map(async (user) => {
-        const { data: sub } = await supabaseAdmin
-          .from('subscriptions')
-          .select('plan, status, end_date')
-          .eq('user_id', user.id)
-          .order('end_date', { ascending: false })
-          .limit(1)
-          .maybeSingle();
+    // Batch fetch all subscriptions in one query
+    const userIds = (profiles || []).map(u => u.id);
+    const { data: allSubs } = await supabaseAdmin
+      .from('subscriptions')
+      .select('user_id, plan, status, end_date, amount')
+      .in('user_id', userIds)
+      .order('end_date', { ascending: false });
 
-        return {
-          ...user,
-          subscription: {
-            plan: sub?.plan || 'none',
-            status: sub?.status || 'inactive',
-            end_date: sub?.end_date || null,
-          },
-        };
-      })
-    );
+    const subMap = {};
+    (allSubs || []).forEach(sub => {
+      if (!subMap[sub.user_id]) subMap[sub.user_id] = sub;
+    });
+
+    const enrichedUsers = (profiles || []).map(user => {
+      const sub = subMap[user.id];
+      return {
+        ...user,
+        subscription: {
+          plan: sub?.plan || 'free',
+          status: sub?.status || 'inactive',
+          end_date: sub?.end_date || null,
+          amount: sub?.amount || 0,
+        },
+      };
+    });
 
     res.json({ success: true, users: enrichedUsers });
   } catch (error) {
